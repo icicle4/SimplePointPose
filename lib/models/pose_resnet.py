@@ -285,7 +285,7 @@ class PoseResNet(nn.Module):
 
         deconv_features = self.deconv_layers(x)
         coarse_heatmaps = self.final_layer(deconv_features)
-        heatmap_loss = (F.mse_loss(coarse_heatmaps, gt_heatmaps, reduction='sum'))
+        heatmap_loss = (F.mse_loss(coarse_heatmaps, gt_heatmaps, reduction='mean'))
 
         B, C, H, W = coarse_heatmaps.size()
 
@@ -314,10 +314,13 @@ class PoseResNet(nn.Module):
         #point_diff = torch.abs(point_logits - gt_point_logits)
         #point_acc = torch.sum(point_diff < 0.05) / len()
 
-        point_loss = F.mse_loss(point_logits, gt_point_logits, reduction='sum')
+        point_loss = F.mse_loss(point_logits, gt_point_logits, reduction='mean')
         loss = heatmap_loss + point_loss
 
+        output_heatmaps = coarse_heatmaps.clone()
+
         return {
+            "output": output_heatmaps,
             "loss": loss,
             "heatmap_loss": heatmap_loss,
             "point_loss": point_loss

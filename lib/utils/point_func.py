@@ -47,6 +47,7 @@ def get_certain_point_coors_with_randomness(
     point_logits = point_sample(flatten_coarse_heatmaps, point_coords)
 
     point_uncertainties = certainty_func(point_logits)
+
     num_uncertain_points = int(importance_sample_ratio * num_points)
     num_random_points = num_points - num_uncertain_points
     idx = torch.topk(point_uncertainties[:, 0, :], k=num_uncertain_points, dim=1)[1]
