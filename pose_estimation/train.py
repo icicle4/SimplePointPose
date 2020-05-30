@@ -110,7 +110,7 @@ def main():
                              config.MODEL.IMAGE_SIZE[1],
                              config.MODEL.IMAGE_SIZE[0]))
 
-    writer_dict['writer'].add_graph(model, (dump_input, ), verbose=False)
+    #writer_dict['writer'].add_graph(model, (dump_input, ), verbose=False)
 
     gpus = [int(i) for i in config.GPUS.split(',')]
     model = torch.nn.DataParallel(model, device_ids=gpus).cuda()
@@ -166,7 +166,6 @@ def main():
     best_model = False
     for epoch in range(config.TRAIN.BEGIN_EPOCH, config.TRAIN.END_EPOCH):
         lr_scheduler.step()
-
         # train for one epoch
         train(config, train_loader, model, optimizer, epoch,
               final_output_dir, tb_log_dir, writer_dict)

@@ -14,7 +14,7 @@ import logging
 import torch
 import torch.nn as nn
 from collections import OrderedDict
-from lib.utils.point_func import *
+from utils.point_func import *
 import fvcore.nn.weight_init as weight_init
 
 
@@ -194,11 +194,14 @@ class PoseResNet(nn.Module):
         self.layer3 = self._make_layer(block, 256, layers[2], stride=2)
         self.layer4 = self._make_layer(block, 512, layers[3], stride=2)
 
-        self.point_head = PointHead(64 + 256, 3)
+        self.point_head = PointHead(256 + 256, 3)
 
-        self.train_num_points = 14 * 14
-        self.oversample_ratio = 3.0,
+        self.train_num_points = 9
+        self.oversample_ratio = 3.0
         self.importance_sample_ratio=0.75
+
+        self.subdivision_steps = 3
+        self.subdivision_num_points = 36
 
         # used for deconv layers
         self.deconv_layers = self._make_deconv_layer(
@@ -273,6 +276,7 @@ class PoseResNet(nn.Module):
         return nn.Sequential(*layers)
 
     def forward(self, x, gt_heatmaps):
+
         x = self.conv1(x)
         x = self.bn1(x)
         x = self.relu(x)
@@ -285,46 +289,88 @@ class PoseResNet(nn.Module):
 
         deconv_features = self.deconv_layers(x)
         coarse_heatmaps = self.final_layer(deconv_features)
-        heatmap_loss = (F.mse_loss(coarse_heatmaps, gt_heatmaps, reduction='mean'))
 
-        B, C, H, W = coarse_heatmaps.size()
+        if self.training:
+            heatmap_loss = (F.mse_loss(coarse_heatmaps, gt_heatmaps, reduction='mean'))
 
-        with torch.no_grad():
-            point_coords = get_certain_point_coors_with_randomness(
-                coarse_heatmaps,
-                lambda logits: calculate_certainty(logits, []),
-                self.train_num_points,
-                self.oversample_ratio,
-                self.importance_sample_ratio)
+            B, C, H, W = coarse_heatmaps.size()
 
-            _, num_sampled, _ = point_coords.size()
-        point_coords = point_coords.view(C, B, num_sampled, 2)
+            with torch.no_grad():
+                point_coords = get_certain_point_coors_with_randomness(
+                    coarse_heatmaps,
+                    lambda logits: calculate_certainty(logits, []),
+                    self.train_num_points,
+                    self.oversample_ratio,
+                    self.importance_sample_ratio)
 
-        corse_features = torch.cat([point_sample(coarse_heatmaps[:, i: i+1], point_coords[i]) for i in range(C)])
-        fine_grained_features = torch.cat([point_sample(backbone, point_coord) for point_coord in point_coords])
-        fine_grained_deconv_features = torch.cat([point_sample(deconv_features, point_coord) for point_coord in point_coords])
+                _, num_sampled, _ = point_coords.size()
+            point_coords = point_coords.view(C, B, num_sampled, 2)
 
-        print('corse_features', corse_features.size())
-        print('fine_grained_features', fine_grained_features.size())
-        print('fine_grained_deconv_features', fine_grained_deconv_features)
+            corse_features = torch.cat([point_sample(coarse_heatmaps[:, i: i+1], point_coords[i]) for i in range(C)])
+            fine_grained_features = torch.cat([point_sample(backbone, point_coord) for point_coord in point_coords])
+            fine_grained_deconv_features = torch.cat([point_sample(deconv_features, point_coord) for point_coord in point_coords])
 
-        point_logits = self.point_head(fine_grained_features, fine_grained_deconv_features, corse_features)
-        gt_point_logits = torch.cat([point_sample(gt_heatmaps[:, i: i+1], point_coords[i]) for i in range(C)])
+            #print('corse_features', corse_features.size())
+            #print('fine_grained_features', fine_grained_features.size())
+            #print('fine_grained_deconv_features', fine_grained_deconv_features.size())
 
-        #point_diff = torch.abs(point_logits - gt_point_logits)
-        #point_acc = torch.sum(point_diff < 0.05) / len()
+            point_logits = self.point_head(fine_grained_features, fine_grained_deconv_features, corse_features)
+            #print('point_logits', point_logits.size())
+            gt_point_logits = torch.cat([point_sample(gt_heatmaps[:, i: i+1], point_coords[i]) for i in range(C)])
+            #print('gt_point_logits', gt_point_logits.size())
 
-        point_loss = F.mse_loss(point_logits, gt_point_logits, reduction='mean')
-        loss = heatmap_loss + point_loss
+            #point_diff = torch.abs(point_logits - gt_point_logits)
+            #point_acc = torch.sum(point_diff < 0.05) / len()
 
-        output_heatmaps = coarse_heatmaps.clone()
+            point_loss = F.mse_loss(point_logits, gt_point_logits, reduction='mean')
+            loss = heatmap_loss + point_loss
 
-        return {
-            "output": output_heatmaps,
-            "loss": loss,
-            "heatmap_loss": heatmap_loss,
-            "point_loss": point_loss
-        }
+            output_heatmaps = coarse_heatmaps.clone()
+
+            return {
+                "output": output_heatmaps,
+                "loss": loss,
+                "heatmap_loss": heatmap_loss,
+                "point_loss": point_loss
+            }
+        else:
+            heatmaps_logits = coarse_heatmaps.clone()
+            D, C, H, W = heatmaps_logits.size()
+
+            for subdivision_step in range(self.subdivision_steps):
+                heatmaps_logits = F.interpolate(heatmaps_logits, scale_factor=2, mode='bilinear', align_corners=False)
+                _, C, H, W = heatmaps_logits.size()
+                flatten_logit = heatmaps_logits.clone().view(D * C, 1, H, W)
+                certain_map = calculate_certainty(flatten_logit, [])
+
+                point_indices, point_coords = get_certain_point_coords_on_grid(
+                    certain_map, num_points=self.subdivision_num_points
+                )
+
+                _, num_sampled, _ = point_coords.size()
+                point_coords = point_coords.view(D, C, 1, num_sampled, 2)
+                fine_grained_features = torch.cat([torch.unsqueeze(point_sample(backbone, point_coords[:, i]), dim=1)
+                                                   for i in range(C)], dim=1)
+                coarse_features = torch.cat(
+                    [torch.unsqueeze(point_sample(heatmaps_logits[:, i: i + 1], point_coords[:, i]), dim=1) for i in range(C)],
+                    dim=1)
+                fine_grained_deconv_features = torch.cat([torch.unsqueeze(point_sample(deconv_features, point_coords[:, i]), dim=1)
+                                                   for i in range(C)], dim=1)
+                coarse_features = coarse_features.view(D*C, -1, num_sampled)
+                fine_grained_features = fine_grained_features.view(D*C, -1, num_sampled)
+                fine_grained_deconv_features = fine_grained_deconv_features.view(D*C, -1, num_sampled)
+
+                point_logits = self.point_head(fine_grained_features, fine_grained_deconv_features, coarse_features)
+                point_logits = point_logits.squeeze(1)
+                # put mask point predictions to the right places on the upsampled grid.
+                R, C, H, W = heatmaps_logits.shape
+                heatmaps_logits = (
+                    heatmaps_logits.reshape(R * C, H * W)
+                        .scatter_(1, point_indices, point_logits)
+                        .view(R, C, H, W)
+                )
+            return heatmaps_logits, coarse_heatmaps
+
 
     def forward_super_heatmap(self, x, subdivision_steps, subdivision_num_points):
         x = self.conv1(x)

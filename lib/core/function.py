@@ -45,7 +45,7 @@ def train(config, train_loader, model, optimizer, epoch,
         data_time.update(time.time() - end)
 
         # compute output
-        output_dict = model(input, target, target_weight)
+        output_dict = model(input, target)
         loss = output_dict['loss']
         heatmap_loss = output_dict['heatmap_loss']
         point_loss = output_dict['point_loss']
@@ -77,10 +77,15 @@ def train(config, train_loader, model, optimizer, epoch,
                   'Speed {speed:.1f} samples/s\t' \
                   'Data {data_time.val:.3f}s ({data_time.avg:.3f}s)\t' \
                   'Loss {loss.val:.5f} ({loss.avg:.5f})\t' \
+                  'PointLoss {point_loss.val:.5f} ({point_loss.avg:.5f})\t' \
+                  'HeatmapLoss {heatmap_loss.val:.5f} ({heatmap_loss.avg:.5f})\t' \
                   'Accuracy {acc.val:.3f} ({acc.avg:.3f})'.format(
                       epoch, i, len(train_loader), batch_time=batch_time,
                       speed=input.size(0)/batch_time.val,
-                      data_time=data_time, loss=losses, acc=acc)
+                      data_time=data_time, loss=losses,
+                    point_loss= point_losses,
+                    heatmap_loss = heatmap_losses,
+                    acc=acc)
             logger.info(msg)
 
             writer = writer_dict['writer']
@@ -117,14 +122,14 @@ def validate(config, val_loader, val_dataset, model, output_dir,
         end = time.time()
         for i, (input, target, target_weight, meta) in enumerate(val_loader):
             # compute output
-            refine_output, coarse_output = model.forward_super_heatmap(input)
+            refine_output, coarse_output = model(input, target)
             if config.TEST.FLIP_TEST:
                 # this part is ugly, because pytorch has not supported negative index
                 # input_flipped = model(input[:, :, :, ::-1])
                 input_flipped = np.flip(input.cpu().numpy(), 3).copy()
                 input_flipped = torch.from_numpy(input_flipped).cuda()
 
-                refine_output_flipped, coarse_output_flipped = model.forward_super_heatmap(input_flipped)
+                refine_output_flipped, coarse_output_flipped = model(input_flipped, target)
 
                 refine_output_flipped = flip_back(refine_output_flipped.cpu().numpy(),
                                            val_dataset.flip_pairs)
