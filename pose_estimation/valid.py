@@ -157,7 +157,7 @@ def main():
     )
 
     # evaluate on validation set
-    validate(config, valid_loader, valid_dataset, model, criterion,
+    validate(config, valid_loader, valid_dataset, model,
              final_output_dir, tb_log_dir)
 
 

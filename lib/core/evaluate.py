@@ -13,15 +13,15 @@ import numpy as np
 from core.inference import get_max_preds
 
 
-def calc_dists(preds, target, normalize):
+def calc_dists(preds, target, normalize_pred, normalize_target):
     preds = preds.astype(np.float32)
     target = target.astype(np.float32)
     dists = np.zeros((preds.shape[1], preds.shape[0]))
     for n in range(preds.shape[0]):
         for c in range(preds.shape[1]):
             if target[n, c, 0] > 1 and target[n, c, 1] > 1:
-                normed_preds = preds[n, c, :] / normalize[n]
-                normed_targets = target[n, c, :] / normalize[n]
+                normed_preds = preds[n, c, :] / normalize_pred[n]
+                normed_targets = target[n, c, :] / normalize_target[n]
                 dists[c, n] = np.linalg.norm(normed_preds - normed_targets)
             else:
                 dists[c, n] = -1
@@ -49,11 +49,15 @@ def accuracy(output, target, hm_type='gaussian', thr=0.5):
     norm = 1.0
     if hm_type == 'gaussian':
         pred, _ = get_max_preds(output)
+        tar_h = target.shape[2]
+        tar_w = target.shape[3]
         target, _ = get_max_preds(target)
-        h = output.shape[2]
-        w = output.shape[3]
-        norm = np.ones((pred.shape[0], 2)) * np.array([h, w]) / 10
-    dists = calc_dists(pred, target, norm)
+        out_h = output.shape[2]
+        out_w = output.shape[3]
+
+        norm_pred = np.ones((pred.shape[0], 2)) * np.array([out_h, out_w]) / 10
+        norm_target = np.ones((target.shape[0], 2)) * np.array([tar_h, tar_w]) / 10
+    dists = calc_dists(pred, target, norm_pred, norm_target)
 
     acc = np.zeros((len(idx) + 1))
     avg_acc = 0
