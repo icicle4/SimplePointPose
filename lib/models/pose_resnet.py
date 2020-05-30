@@ -305,7 +305,6 @@ class PoseResNet(nn.Module):
 
                 _, num_sampled, _ = point_coords.size()
             point_coords = point_coords.view(C, B, num_sampled, 2)
-
             corse_features = torch.cat([point_sample(coarse_heatmaps[:, i: i+1], point_coords[i]) for i in range(C)])
             fine_grained_features = torch.cat([point_sample(backbone, point_coord) for point_coord in point_coords])
             fine_grained_deconv_features = torch.cat([point_sample(deconv_features, point_coord) for point_coord in point_coords])
@@ -331,14 +330,18 @@ class PoseResNet(nn.Module):
                 "output": output_heatmaps,
                 "loss": loss,
                 "heatmap_loss": heatmap_loss,
-                "point_loss": point_loss
+                "point_loss": point_loss,
+                'point_coords': point_coords
             }
         else:
             heatmaps_logits = coarse_heatmaps.clone()
             D, C, H, W = heatmaps_logits.size()
 
+            stage_heatmaps = []
+            stage_point_indices = []
             for subdivision_step in range(self.subdivision_steps):
                 heatmaps_logits = F.interpolate(heatmaps_logits, scale_factor=2, mode='bilinear', align_corners=False)
+                stage_heatmaps.append(heatmaps_logits)
                 _, C, H, W = heatmaps_logits.size()
                 flatten_logit = heatmaps_logits.clone().view(D * C, 1, H, W)
                 certain_map = calculate_certainty(flatten_logit, [])
@@ -346,6 +349,7 @@ class PoseResNet(nn.Module):
                 point_indices, point_coords = get_certain_point_coords_on_grid(
                     certain_map, num_points=self.subdivision_num_points
                 )
+                stage_point_indices.append(point_indices)
 
                 _, num_sampled, _ = point_coords.size()
                 point_coords = point_coords.view(D, C, 1, num_sampled, 2)
@@ -369,8 +373,12 @@ class PoseResNet(nn.Module):
                         .scatter_(1, point_indices, point_logits)
                         .view(R, C, H, W)
                 )
-            return heatmaps_logits, coarse_heatmaps
-
+            return {
+                'refine': heatmaps_logits,
+                'coarse': coarse_heatmaps,
+                'stage_heatmaps': stage_heatmaps,
+                'stage_point_indices': stage_point_indices
+            }
 
     def forward_super_heatmap(self, x, subdivision_steps, subdivision_num_points):
         x = self.conv1(x)

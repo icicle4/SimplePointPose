@@ -19,7 +19,7 @@ from core.config import get_model_name
 from core.evaluate import accuracy
 from core.inference import get_final_preds
 from utils.transforms import flip_back
-from utils.vis import save_debug_images
+from utils.vis import save_debug_images, save_train_debug_heatmaps, save_val_debug_heatmaps
 
 
 logger = logging.getLogger(__name__)
@@ -99,6 +99,9 @@ def train(config, train_loader, model, optimizer, epoch,
             prefix = '{}_{}'.format(os.path.join(output_dir, 'train'), i)
             save_debug_images(config, input, meta, target, pred*4, output_dict['output'],
                               prefix)
+            save_train_debug_heatmaps(
+                output_dict, prefix
+            )
 
 
 def validate(config, val_loader, val_dataset, model, output_dir,
@@ -122,7 +125,8 @@ def validate(config, val_loader, val_dataset, model, output_dir,
         end = time.time()
         for i, (input, target, target_weight, meta) in enumerate(val_loader):
             # compute output
-            refine_output, coarse_output = model(input, target)
+            output_dict = model(input, target)
+            refine_output, coarse_output = output_dict['refine'], output_dict['coarse']
             if config.TEST.FLIP_TEST:
                 # this part is ugly, because pytorch has not supported negative index
                 # input_flipped = model(input[:, :, :, ::-1])
@@ -205,6 +209,9 @@ def validate(config, val_loader, val_dataset, model, output_dir,
                 refine_prefix = '{}_{}_refine'.format(os.path.join(output_dir, 'val'), i)
                 save_debug_images(config, input, meta, target, refine_pred * 4, refine_output,
                                   refine_prefix)
+
+                save_val_debug_heatmaps(output_dict, refine_prefix)
+
 
         name_values, perf_indicator = val_dataset.evaluate(
             config, all_preds, output_dir, all_boxes, image_path,
