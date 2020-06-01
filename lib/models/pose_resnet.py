@@ -196,7 +196,7 @@ class PoseResNet(nn.Module):
 
         self.point_head = PointHead(256 + 256, 3)
 
-        self.train_num_points = 9
+        self.train_num_points = 18
         self.oversample_ratio = 3.0
         self.importance_sample_ratio=0.75
 
@@ -349,7 +349,6 @@ class PoseResNet(nn.Module):
                 point_indices, point_coords = get_certain_point_coords_on_grid(
                     certain_map, num_points=self.subdivision_num_points
                 )
-                stage_point_indices.append(point_indices)
 
                 _, num_sampled, _ = point_coords.size()
                 point_coords = point_coords.view(D, C, 1, num_sampled, 2)
@@ -373,6 +372,7 @@ class PoseResNet(nn.Module):
                         .scatter_(1, point_indices, point_logits)
                         .view(R, C, H, W)
                 )
+                stage_point_indices.append(point_indices.view(D, C, -1))
             return {
                 'refine': heatmaps_logits,
                 'coarse': coarse_heatmaps,
