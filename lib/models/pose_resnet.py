@@ -453,51 +453,6 @@ class PoseResNet(nn.Module):
                 'stage_point_indices': stage_point_indices
             }
 
-    def forward_super_heatmap(self, x, subdivision_steps, subdivision_num_points):
-        x = self.conv1(x)
-        x = self.bn1(x)
-        x = self.relu(x)
-        x = self.maxpool(x)
-        backbone = self.layer1(x)
-
-        x = self.layer2(backbone)
-        x = self.layer3(x)
-        x = self.layer4(x)
-        deconv_features = self.deconv_layers(x)
-        coarse_heatmaps = self.final_layer(deconv_features)
-
-        heatmaps_logits = coarse_heatmaps.clone()
-
-        for subdivions_step in range(subdivision_steps):
-            heatmaps_logits = F.interpolate(heatmaps_logits, scale_factor=2, mode='bilinear', align_corners=False)
-            D, C, H, W = heatmaps_logits.shape
-
-            flatten_logits = heatmaps_logits.clone().view(C, 1, H, W)
-            certain_map = calculate_certainty(flatten_logits, [])
-
-            point_indices, point_coords = get_certain_point_coords_on_grid(
-                certain_map, num_points=subdivision_num_points
-            )
-
-            _, num_sampled, _ = point_coords.size()
-            point_coords = point_coords.view(C, 1, num_sampled, 2)
-
-            fine_grained_features = torch.cat([point_sample(backbone, point_coord) for point_coord in point_coords])
-            coarse_features = torch.cat([point_sample(heatmaps_logits[:, i: i+1], point_coords[i]) for i in range(C)])
-            fine_grained_deconv_features = torch.cat(
-                [point_sample(deconv_features, point_coord) for point_coord in point_coords])
-            point_logits = self.point_head(fine_grained_features, fine_grained_deconv_features, coarse_features)
-
-            # put mask point predictions to the right places on the upsampled grid.
-            R, C, H, W = heatmaps_logits.shape
-            heatmaps_logits = (
-                heatmaps_logits.reshape(C, H * W)
-                    .scatter_(1, point_indices, point_logits)
-                    .view(R, C, H, W)
-            )
-
-        return heatmaps_logits, coarse_heatmaps
-
 
     def init_weights(self, pretrained=''):
         if os.path.isfile(pretrained):

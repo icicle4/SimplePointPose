@@ -1,5 +1,6 @@
 import torch
 from torch.nn import functional as F
+from utils import heatmap_func
 
 
 def generate_regular_grid_point_coords(R, side_size, device):
@@ -59,12 +60,14 @@ def get_certain_point_coors_with_randomness(
     point_coords_wrt_heatmap = get_point_coords_wrt_roi(cat_boxes, point_coords)
 
     point_logits = []
+
     for i, coarse_heatmap in enumerate(flatten_coarse_heatmaps):
         h, w = coarse_heatmap.shape[-2:]
+        uncertain_map = heatmap_func.calculate_uncertain_gaussian_heatmap_func(coarse_heatmap, upscale=1)
         point_coords_scaled = point_coords_wrt_heatmap / torch.tensor([w, h], device=coarse_heatmap.device)
         point_logits.append(
             point_sample(
-                coarse_heatmap.unsqueeze(0),
+                uncertain_map.unsqueeze(0),
                 point_coords_scaled.unsqueeze(0),
                 align_corners=False
             ).squeeze(0)

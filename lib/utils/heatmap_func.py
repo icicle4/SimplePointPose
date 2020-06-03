@@ -1,5 +1,23 @@
 import numpy as np
 import torch
+import torch.nn.functional as F
+
+
+def calculate_uncertain_gaussian_heatmap_func(heatamp, upscale=1):
+    if len(heatamp.size()) == 3:
+        heatamp = torch.squeeze(heatamp, dim=0)
+
+    if upscale == 1:
+        gaussian_heatmap = gaussian_interpolate(heatamp, 1)
+        row_heatmap = heatamp
+        diff_map = torch.abs(row_heatmap - gaussian_heatmap)
+    else:
+        gaussian_heatmap = gaussian_interpolate(heatamp, upscale)
+        interpolated_heatmap = F.interpolate(
+            heatamp, scale_factor=upscale, mode="bilinear", align_corners=False
+        ).squeeze(0)
+        diff_map = torch.abs(interpolated_heatmap - gaussian_heatmap)
+    return diff_map
 
 
 def gaussian_interpolate(heatmap, upsample_scale):
