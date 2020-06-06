@@ -308,10 +308,11 @@ class PoseResNet(nn.Module):
 
                 _, num_sampled, _ = point_coords.size()
 
-            cat_boxes = torch.cat(proposal_boxes)
-
+            cat_boxes = torch.cat(proposal_boxes, dim=0)
             point_coords_wrt_heatmap = get_point_coords_wrt_roi(cat_boxes, point_coords)
             point_coords_wrt_heatmap = point_coords_wrt_heatmap.view(B, C, num_sampled, 2).permute(1, 0, 2, 3)
+            print('point_coords_wrt_heatmap', point_coords_wrt_heatmap.size(), point_coords_wrt_heatmap.type(),
+                  point_coords_wrt_heatmap.device)
 
             fine_grained_backbone = point_sample_fine_grained_features(
                 backbone, point_coords_wrt_heatmap

@@ -1,6 +1,7 @@
 import torch
 from torch.nn import functional as F
 from utils import heatmap_func
+import numpy as np
 
 
 def generate_regular_grid_point_coords(R, side_size, device):
@@ -41,7 +42,7 @@ def get_interest_box(heatmap, k=49):
     min_idx, max_idx = min(idxs), max(idxs)
     min_x, min_y = min_idx % width, min_idx // width
     max_x, max_y = max_idx % width, max_idx // width
-    return min_x, min_y, max_x, max_y
+    return torch.tensor([min_x, min_y, max_x, max_y]).long().cuda().unsqueeze(dim=0)
 
 
 def get_certain_point_coors_with_randomness(
@@ -63,8 +64,11 @@ def get_certain_point_coors_with_randomness(
 
     for i, coarse_heatmap in enumerate(flatten_coarse_heatmaps):
         h, w = coarse_heatmap.shape[-2:]
-        uncertain_map = heatmap_func.calculate_uncertain_gaussian_heatmap_func(coarse_heatmap, upscale=1)
-        point_coords_scaled = point_coords_wrt_heatmap / torch.tensor([w, h], device=coarse_heatmap.device)
+        #print('coarse_heatmap', coarse_heatmap.size(), coarse_heatmap.type(), coarse_heatmap.device)
+        uncertain_map = heatmap_func.calculate_uncertain_gaussian_heatmap_func(coarse_heatmap, upscale=1).unsqueeze(0)
+        point_coords_scaled = point_coords_wrt_heatmap[i] / torch.tensor([w, h], device=coarse_heatmap.device)
+        #print('uncertain_map', uncertain_map.size(), uncertain_map.type(), uncertain_map.device)
+        #print('point_coords_scaled', point_coords_scaled.size(), point_coords_scaled.type(), point_coords_scaled.device)
         point_logits.append(
             point_sample(
                 uncertain_map.unsqueeze(0),
@@ -73,7 +77,8 @@ def get_certain_point_coors_with_randomness(
             ).squeeze(0)
         )
 
-    point_logits = torch.cat(point_logits, dim=0)
+    point_logits = torch.cat(point_logits, dim=0).unsqueeze(dim=1)
+    #print('point_logits', point_logits.size(), point_logits.type(), point_logits.device)
     point_uncertainties = certainty_func(point_logits)
 
     num_uncertain_points = int(importance_sample_ratio * num_points)
@@ -117,7 +122,6 @@ def calculate_certainty(logits, classes):
     if logits.shape[1] == 1:
         gt_class_logits = logits.clone().cuda()
     else:
-
         gt_class_logits = logits[
             torch.arange(logits.shape[0], device=logits.device), classes
         ].unsqueeze(1).cuda()
@@ -152,15 +156,27 @@ def point_sample_fine_grained_features(feature, point_coords_wrt_heatmap, scale=
     point_logits = []
 
     for i, point_coord_wrt_heatmap in enumerate(point_coords_wrt_heatmap):
+        print('i', i)
         h, w = feature.shape[-2:]
-        point_coords_scaled = point_coord_wrt_heatmap / (torch.tensor([w, h], device=feature.device) * scale)
-        point_logits.append(
-            point_sample(
+        print('point_coords_wrt_heatmap', point_coord_wrt_heatmap.size(), point_coord_wrt_heatmap.type(),
+                point_coord_wrt_heatmap.device)
+        #s = torch.tensor([w, h], device=feature.device)
+        point_coord_wrt_heatmap[:, :, 0] /= (w * scale)
+        point_coord_wrt_heatmap[:, :, 1] /= (h * scale)
+        point_coords_scaled = point_coord_wrt_heatmap
+        print('feature', feature.size(), feature.type(), feature.device)
+        print('point_coords_scaled', point_coords_scaled.size(), point_coords_scaled.type(), point_coords_scaled.device)
+
+        sample_logit = point_sample(
                 feature,
                 point_coords_scaled,
                 align_corners=False
             )
+        print('sample_logit', sample_logit.size(), sample_logit.type(), sample_logit.device)
+        point_logits.append(
+            sample_logit
         )
+
 
     point_logits = torch.cat(point_logits, dim=0)
     return point_logits
