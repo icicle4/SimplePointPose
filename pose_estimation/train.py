@@ -50,6 +50,10 @@ def parse_args():
                         required=True,
                         type=str)
 
+    parser.add_argument('--resume',
+                        default=None,
+                        type=str
+                        )
 
     args, rest = parser.parse_known_args()
     # update config
@@ -110,13 +114,6 @@ def main():
         'valid_global_steps': 0,
     }
 
-    dump_input = torch.rand((config.TRAIN.BATCH_SIZE,
-                             3,
-                             config.MODEL.IMAGE_SIZE[1],
-                             config.MODEL.IMAGE_SIZE[0]))
-
-    #writer_dict['writer'].add_graph(model, (dump_input, ), verbose=False)
-
     gpus = [int(i) for i in config.GPUS.split(',')]
     model = torch.nn.DataParallel(model, device_ids=gpus).cuda()
 
@@ -167,9 +164,22 @@ def main():
         pin_memory=True
     )
 
-    best_perf = 0.0
+    if args.resume:
+        if os.path.isfile(args.resume):
+            print("=> loading checkpoint '{}'".format(args.resume))
+            checkpoint = torch.load(args.resume)
+            args.start_epoch = checkpoint['epoch']
+            best_perf = checkpoint['perf']
+            model.load_state_dict(checkpoint['state_dict'])
+            optimizer.load_state_dict(checkpoint['optimizer'])
+            print("=> loaded checkpoint '{}' (epoch {})"
+                  .format(args.resume, checkpoint['epoch']))
+    else:
+        best_perf = 0.0
+        args.start_epoch = 0
+
     best_model = False
-    for epoch in range(config.TRAIN.BEGIN_EPOCH, config.TRAIN.END_EPOCH):
+    for epoch in range(args.start_epoch, config.TRAIN.END_EPOCH):
         lr_scheduler.step()
 
         # train for one epoch
