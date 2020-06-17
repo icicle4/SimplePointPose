@@ -99,9 +99,9 @@ def train(config, train_loader, model, optimizer, epoch,
             prefix = '{}_{}'.format(os.path.join(output_dir, 'train'), i)
             save_debug_images(config, input, meta, target, pred*4, output_dict['output'],
                               prefix)
-            save_train_debug_heatmaps(
-                output_dict, prefix
-            )
+            # save_train_debug_heatmaps(
+            #     output_dict, prefix
+            # )
 
 
 def validate(config, val_loader, val_dataset, model, output_dir,
@@ -210,7 +210,7 @@ def validate(config, val_loader, val_dataset, model, output_dir,
                 save_debug_images(config, input, meta, target, refine_pred * 4, refine_output,
                                   refine_prefix)
 
-                save_val_debug_heatmaps(output_dict, refine_prefix)
+                # save_val_debug_heatmaps(output_dict, refine_prefix)
 
 
         name_values, perf_indicator = val_dataset.evaluate(

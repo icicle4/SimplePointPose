@@ -17,6 +17,8 @@ from collections import OrderedDict
 from utils.point_func import *
 import fvcore.nn.weight_init as weight_init
 from utils.heatmap_func import *
+from utils.vis import vis_bbox_and_sample_point
+
 
 
 BN_MOMENTUM = 0.1
@@ -197,12 +199,12 @@ class PoseResNet(nn.Module):
 
         self.point_head = PointHead(256 + 256, 3)
 
-        self.train_num_points = 14 * 14
+        self.train_num_points = 7 * 7
         self.oversample_ratio = 3.0
         self.importance_sample_ratio = 0.75
 
         self.subdivision_steps = 3
-        self.subdivision_num_points = 24 * 24
+        self.subdivision_num_points = 14 * 14
 
         self.freeze_gaussian = True
 
@@ -311,8 +313,8 @@ class PoseResNet(nn.Module):
             cat_boxes = torch.cat(proposal_boxes, dim=0)
             point_coords_wrt_heatmap = get_point_coords_wrt_roi(cat_boxes, point_coords)
             point_coords_wrt_heatmap = point_coords_wrt_heatmap.view(B, C, num_sampled, 2).permute(1, 0, 2, 3)
-            print('point_coords_wrt_heatmap', point_coords_wrt_heatmap.size(), point_coords_wrt_heatmap.type(),
-                  point_coords_wrt_heatmap.device)
+
+            #vis_bbox_and_sample_point(coarse_heatmaps, cat_boxes, point_coords_wrt_heatmap)
 
             fine_grained_backbone = point_sample_fine_grained_features(
                 backbone, point_coords_wrt_heatmap
@@ -325,25 +327,43 @@ class PoseResNet(nn.Module):
             coarse_features = point_sample_pd_heatmaps(
                 coarse_heatmaps, point_coords_wrt_heatmap
             )
-
             point_logits = self.point_head(fine_grained_backbone, fine_grained_deconv, coarse_features)
 
             # 此处我们将interpolate插值替换为gaussian插值
             if self.freeze_gaussian:
-                gt_point_logits = []
-                D, C, H, W = gt_heatmaps.shape
-                for i in range(D):
-                    for j in range(C):
-                        point_coord_wrt_heatmap = point_coords_wrt_heatmap[j, i]
-                        point_coord_wrt_heatmap = point_coord_wrt_heatmap.permute(1, 0)
+                with torch.no_grad():
+                    gt_point_logits = []
+                    D, C, H, W = gt_heatmaps.shape
+                    for i in range(D):
+                        for j in range(C):
+                            point_coord_wrt_heatmap = point_coords_wrt_heatmap[j, i]
+                            point_coord_wrt_heatmap = point_coord_wrt_heatmap.permute(1, 0)
 
-                        heatmap = gt_heatmaps[i, j]
-                        params = moment_torch(heatmap)
-                        fit = gaussian_torch(*params)
-                        gt_point_logit = fit(*point_coord_wrt_heatmap)
-                        print('gt_point_logit', gt_point_logit)
-                        gt_point_logits.append(gt_point_logit)
-                gt_point_logits = torch.cat(gt_point_logits)
+                            heatmap = gt_heatmaps[i, j]
+                            if torch.sum(heatmap) ==0:
+                                params = [
+                                    torch.tensor(0.00001).cuda(),
+                                    torch.tensor(24).cuda(),
+                                    torch.tensor(32).cuda(),
+                                    torch.tensor(72).cuda(),
+                                    torch.tensor(96).cuda(),
+                                ]
+                            else:
+                                params = moment_torch(heatmap)
+
+                            if sum([torch.isnan(p) for p in params])>0:
+                                params = [
+                                    torch.tensor(0.00001).cuda(),
+                                    torch.tensor(24).cuda(),
+                                    torch.tensor(32).cuda(),
+                                    torch.tensor(72).cuda(),
+                                    torch.tensor(96).cuda(),
+                                ]
+
+                            fit = gaussian_torch(*params)
+                            gt_point_logit = fit(*point_coord_wrt_heatmap)
+                            gt_point_logits.append(gt_point_logit[None, None, :])
+                    gt_point_logits = torch.cat(gt_point_logits)
             else:
                 gt_point_logits = []
                 D, C, H, W = gt_heatmaps.shape
@@ -356,7 +376,7 @@ class PoseResNet(nn.Module):
                         params = moment_torch(heatmap)
                         fit = gaussian_torch(*params)
                         gt_point_logit = fit(*point_coord_wrt_heatmap)
-                        print('gt_point_logit', gt_point_logit)
+
                         gt_point_logits.append(gt_point_logit)
                 gt_point_logits = torch.cat(gt_point_logits)
 
@@ -374,6 +394,7 @@ class PoseResNet(nn.Module):
             }
 
         else:
+
             heatmaps_logits = coarse_heatmaps.clone()
             D, C, H, W = heatmaps_logits.size()
 
@@ -382,8 +403,7 @@ class PoseResNet(nn.Module):
 
             for subdivision_step in range(self.subdivision_steps):
                 upsampled_heatmap_logits = []
-                proposal_boxes = []
-                point_coords_wrt_heatmap = []
+                point_coords = []
                 point_indices = []
 
                 for i in range(D):
@@ -393,44 +413,27 @@ class PoseResNet(nn.Module):
                         # 我们将两种特征图中差异最大的值作为我们需要优化的目标
                         gaussian_heatmap = gaussian_interpolate(heatmap_logit, 2)
                         interpolated_heatmap = F.interpolate(
-                            heatmap_logit.unsqueeze(dim=0), scale_factor=2, mode="bilinear", align_corners=False
+                            heatmap_logit[None, None, :, :], scale_factor=2, mode="bilinear", align_corners=False
                         ).squeeze(0)
 
                         error_map = torch.abs(gaussian_heatmap - interpolated_heatmap)
                         uncertain_map = calculate_certainty(error_map.unsqueeze(dim=0), [])
 
-                        box = get_interest_box(heatmaps_logits, 49)
-                        proposal_boxes.append(box)
-                        upsampled_heatmap_logits.append(gaussian_heatmap.unsqueeze(dim=0))
-
-                        point_indice, point_coords = get_certain_point_coords_on_grid(
+                        point_indice, point_coord = get_certain_point_coords_on_grid(
                             uncertain_map, num_points=self.subdivision_num_points
                         )
 
                         point_indices.append(point_indice)
+                        point_coords.append(point_coord)
 
-                        point_coord_wrt_heatmap = get_point_coords_wrt_roi(
-                            box, point_coords
-                        )
-
-                        point_coords_wrt_heatmap.append(
-                            point_coord_wrt_heatmap
-                        )
+                        upsampled_heatmap_logits.append(interpolated_heatmap)
 
                 point_indices = torch.cat(point_indices)
-                point_coords_wrt_heatmap = torch.cat(point_coords_wrt_heatmap).view(D, C, -1, 2).permute(1, 0, 2, 3)
+                point_coords = torch.cat(point_coords).view(D, C, -1, 2).permute(1, 0, 2, 3)
 
-                fine_grained_backbone = point_sample_fine_grained_features(
-                    backbone, point_coords_wrt_heatmap, scale=2**(subdivision_step + 1)
-                )
-
-                fine_grained_deconv = point_sample_fine_grained_features(
-                    deconv_features, point_coords_wrt_heatmap, scale=2**(subdivision_step + 1)
-                )
-
-                coarse_features = point_sample_pd_heatmaps(
-                    coarse_heatmaps, point_coords_wrt_heatmap, scale=2**(subdivision_step + 1)
-                )
+                fine_grained_backbone = point_sample_features(backbone, point_coords)
+                fine_grained_deconv = point_sample_features(deconv_features, point_coords)
+                coarse_features = point_sample_pd_features(coarse_heatmaps, point_coords)
 
                 upsampled_heatmap_logits = torch.cat(upsampled_heatmap_logits, dim=0)
                 _, new_H, new_W = upsampled_heatmap_logits.size()

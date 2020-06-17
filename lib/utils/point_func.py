@@ -2,6 +2,8 @@ import torch
 from torch.nn import functional as F
 from utils import heatmap_func
 import numpy as np
+import matplotlib.pyplot as plt
+import matplotlib.patches as mpathes
 
 
 def generate_regular_grid_point_coords(R, side_size, device):
@@ -42,7 +44,10 @@ def get_interest_box(heatmap, k=49):
     min_idx, max_idx = min(idxs), max(idxs)
     min_x, min_y = min_idx % width, min_idx // width
     max_x, max_y = max_idx % width, max_idx // width
-    return torch.tensor([min_x, min_y, max_x, max_y]).long().cuda().unsqueeze(dim=0)
+    bbox = torch.tensor([min_x, min_y, max_x, max_y]).long().cuda().unsqueeze(dim=0)
+
+
+    return bbox
 
 
 def get_certain_point_coors_with_randomness(
@@ -56,19 +61,22 @@ def get_certain_point_coors_with_randomness(
     target_num = flatten_coarse_heatmaps.shape[0]
     proposal_boxes = [get_interest_box(heatmap[0]) for heatmap in flatten_coarse_heatmaps]
 
-    point_coords = torch.randn(target_num, num_sampled, 2, device=coarse_heatmaps.device)
+    point_coords = torch.rand(target_num, num_sampled, 2, device=coarse_heatmaps.device)
+    #print('point coords', point_coords)
+
     cat_boxes = torch.cat(proposal_boxes)
-    point_coords_wrt_heatmap = get_point_coords_wrt_roi(cat_boxes, point_coords)
+
+    p_coords = point_coords.clone()
+    point_coords_wrt_heatmap = get_point_coords_wrt_roi(cat_boxes, p_coords)
 
     point_logits = []
 
-    for i, coarse_heatmap in enumerate(flatten_coarse_heatmaps):
+    for i in range(target_num):
+        coarse_heatmap = flatten_coarse_heatmaps[i]
         h, w = coarse_heatmap.shape[-2:]
-        #print('coarse_heatmap', coarse_heatmap.size(), coarse_heatmap.type(), coarse_heatmap.device)
         uncertain_map = heatmap_func.calculate_uncertain_gaussian_heatmap_func(coarse_heatmap, upscale=1).unsqueeze(0)
         point_coords_scaled = point_coords_wrt_heatmap[i] / torch.tensor([w, h], device=coarse_heatmap.device)
-        #print('uncertain_map', uncertain_map.size(), uncertain_map.type(), uncertain_map.device)
-        #print('point_coords_scaled', point_coords_scaled.size(), point_coords_scaled.type(), point_coords_scaled.device)
+
         point_logits.append(
             point_sample(
                 uncertain_map.unsqueeze(0),
@@ -78,8 +86,10 @@ def get_certain_point_coors_with_randomness(
         )
 
     point_logits = torch.cat(point_logits, dim=0).unsqueeze(dim=1)
-    #print('point_logits', point_logits.size(), point_logits.type(), point_logits.device)
+    #print('point_logits', point_logits.size(), point_logits.type())
     point_uncertainties = certainty_func(point_logits)
+
+    #print('point_uncertainties', point_uncertainties.size(), point_uncertainties.type())
 
     num_uncertain_points = int(importance_sample_ratio * num_points)
     num_random_points = num_points - num_uncertain_points
@@ -90,6 +100,7 @@ def get_certain_point_coors_with_randomness(
     point_coords = point_coords.view(-1, 2)[idx.view(-1), :].view(
         target_num, num_uncertain_points, 2
     )
+    #print('point_coords', point_coords.size(), point_coords.type(), point_coords.device)
 
     if num_random_points > 0:
         point_coords = torch.cat(
@@ -137,14 +148,16 @@ def point_sample_pd_heatmaps(pd_heatmaps, point_coords_wrt_heatmap, scale = 1):
     """
     D, C, H, W = pd_heatmaps.size()
     point_logits = []
+
+    point_coords_scaled = point_coords_wrt_heatmap / (torch.tensor([W, H], device=pd_heatmaps.device) * scale)
+
     for i in range(C):
-        point_coord_wrt_heatmap = point_coords_wrt_heatmap[i]
-        point_coords_scaled = point_coord_wrt_heatmap / (torch.tensor([W, H], device=pd_heatmaps.device) * scale)
+        point_coord_scaled = point_coords_scaled[i]
         pd_heatmap = pd_heatmaps[:, i:i+1]
         point_logits.append(
             point_sample(
                 pd_heatmap,
-                point_coords_scaled,
+                point_coord_scaled,
                 align_corners=False
             )
         )
@@ -152,31 +165,60 @@ def point_sample_pd_heatmaps(pd_heatmaps, point_coords_wrt_heatmap, scale = 1):
     return point_logits
 
 
-def point_sample_fine_grained_features(feature, point_coords_wrt_heatmap, scale=1):
+def point_sample_pd_features(pd_heatmaps, point_coords):
     point_logits = []
-
-    for i, point_coord_wrt_heatmap in enumerate(point_coords_wrt_heatmap):
-        print('i', i)
-        h, w = feature.shape[-2:]
-        print('point_coords_wrt_heatmap', point_coord_wrt_heatmap.size(), point_coord_wrt_heatmap.type(),
-                point_coord_wrt_heatmap.device)
-        #s = torch.tensor([w, h], device=feature.device)
-        point_coord_wrt_heatmap[:, :, 0] /= (w * scale)
-        point_coord_wrt_heatmap[:, :, 1] /= (h * scale)
-        point_coords_scaled = point_coord_wrt_heatmap
-        print('feature', feature.size(), feature.type(), feature.device)
-        print('point_coords_scaled', point_coords_scaled.size(), point_coords_scaled.type(), point_coords_scaled.device)
-
-        sample_logit = point_sample(
-                feature,
-                point_coords_scaled,
+    D, C, _, _ = pd_heatmaps.shape
+    for i in range(C):
+        point_coord = point_coords[i]
+        pd_heatmap = pd_heatmaps[:, i:i+1]
+        point_logits.append(
+            point_sample(
+                pd_heatmap,
+                point_coord,
                 align_corners=False
             )
-        print('sample_logit', sample_logit.size(), sample_logit.type(), sample_logit.device)
+        )
+    point_logits = torch.cat(point_logits, dim=0)
+    return point_logits
+
+
+def point_sample_features(feature, point_coords):
+    point_logits = []
+
+    C, D, num_sampled, _ = point_coords.shape
+
+    for i in range(C):
+        point_coord = point_coords[i]
+        sample_logit = point_sample(
+            feature,
+            point_coord,
+            align_corners=False
+        )
         point_logits.append(
             sample_logit
         )
+    point_logits = torch.cat(point_logits, dim=0)
+    return point_logits
 
+
+
+def point_sample_fine_grained_features(feature, point_coords_wrt_heatmap, scale=1):
+    point_logits = []
+
+    H, W = feature.shape[-2:]
+    point_coords_scaled = point_coords_wrt_heatmap / (torch.tensor([W, H], device=feature.device) * scale)
+    C, D, num_sampled, _ = point_coords_wrt_heatmap.shape
+
+    for i in range(C):
+        point_coord_scaled = point_coords_scaled[i]
+        sample_logit = point_sample(
+                feature,
+                point_coord_scaled,
+                align_corners=False
+            )
+        point_logits.append(
+            sample_logit
+        )
 
     point_logits = torch.cat(point_logits, dim=0)
     return point_logits
@@ -198,6 +240,7 @@ def get_point_coords_wrt_roi(boxes_coords, point_coords):
     """
     with torch.no_grad():
         point_coords_wrt_image = point_coords.clone()
+        #print('point coords wrt', point_coords_wrt_image)
         point_coords_wrt_image[:, :, 0] = point_coords_wrt_image[:, :, 0] * (
             boxes_coords[:, None, 2] - boxes_coords[:, None, 0]
         )

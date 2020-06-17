@@ -17,6 +17,47 @@ import cv2
 from core.inference import get_max_preds
 from matplotlib import pyplot as plt
 import os
+import matplotlib.patches as mpathes
+
+
+def vis_bbox_and_sample_point(heatmaps, cat_bboxs, point_coords_wrt_heatmap):
+    numpy_heatmaps = heatmaps.clone().detach().cpu().numpy()
+    numpy_bboxs = cat_bboxs.clone().detach().cpu().numpy()
+    numpy_coords = point_coords_wrt_heatmap.clone().detach().cpu().numpy()
+
+    B, C, H, W = numpy_heatmaps.shape
+    print('numpy heatmaps', numpy_heatmaps.shape)
+    print('numpy bboxs', numpy_bboxs.shape)
+    print('numpy coords', numpy_coords.shape)
+
+    for i in range(B):
+        for j in range(C):
+            idx = i * C + j
+            bbox = numpy_bboxs[idx]
+            heatmap = numpy_heatmaps[i, j]
+            coord = numpy_coords[j, i]
+            print('bbox', bbox)
+            print('coord', coord)
+
+            min_x, min_y, max_x, max_y = bbox
+
+            fig, ax = plt.subplots()
+            rect = mpathes.Rectangle((min_x, min_y), max_x - min_x,
+                                     max_y - min_y, color='r', fill=False)
+
+            plt.scatter(
+                coord[:, 0], coord[:, 1], c='red', marker='o', s=1
+            )
+
+            ax.add_patch(rect)
+            plt.imshow(heatmap)
+            plt.colorbar()
+            plt.show()
+
+    #
+    # for bbox in cat_boxes:
+    #     numpy_bbox = bbox.clone().detach().cpu().numpy()[0]
+    #
 
 
 def save_batch_image_with_joints(batch_image, batch_joints, batch_joints_vis,

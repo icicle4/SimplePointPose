@@ -37,6 +37,10 @@ from utils.utils import create_logger
 import dataset
 import models
 
+import os
+
+os.environ['CUDA_LAUNCH_BLOCKING']= "1"
+
 
 def parse_args():
     parser = argparse.ArgumentParser(description='Train keypoints network')
@@ -45,6 +49,7 @@ def parse_args():
                         help='experiment configure file name',
                         required=True,
                         type=str)
+
 
     args, rest = parser.parse_known_args()
     # update config
@@ -166,10 +171,10 @@ def main():
     best_model = False
     for epoch in range(config.TRAIN.BEGIN_EPOCH, config.TRAIN.END_EPOCH):
         lr_scheduler.step()
+
         # train for one epoch
         train(config, train_loader, model, optimizer, epoch,
               final_output_dir, tb_log_dir, writer_dict)
-
 
         # evaluate on validation set
         perf_indicator = validate(config, valid_loader, valid_dataset, model,
