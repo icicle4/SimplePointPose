@@ -9,12 +9,10 @@ import matplotlib.patches as mpathes
 def generate_regular_grid_point_coords(R, side_size, device):
     """
     Generate regular square grid of points in [0, 1] x [0, 1] coordinate space.
-
     Args:
         R (int): The number of grids to sample, one for each region.
         side_size (int): The side size of the regular grid.
         device (torch.device): Desired device of returned tensor.
-
     Returns:
         (Tensor): A tensor of shape (R, side_size^2, 2) that contains coordinates
             for the regular grids.
@@ -118,14 +116,12 @@ def calculate_certainty(logits, classes):
     """
     We estimate uncerainty as L1 distance between 0.0 and the logit prediction in 'logits' for the
         foreground class in `classes`.
-
     Args:
         logits (Tensor): A tensor of shape (R, C, ...) or (R, 1, ...) for class-specific or
             class-agnostic, where R is the total number of predicted masks in all images and C is
             the number of foreground classes. The values are logits.
         classes (list): A list of length R that contains either predicted of ground truth class
             for eash predicted mask.
-
     Returns:
         scores (Tensor): A tensor of shape (R, 1, ...) that contains uncertainty scores with
             the most uncertain locations having the highest uncertainty score.
@@ -227,13 +223,11 @@ def point_sample_fine_grained_features(feature, point_coords_wrt_heatmap, scale=
 def get_point_coords_wrt_roi(boxes_coords, point_coords):
     """
     Convert box-normalized [0, 1] x [0, 1] point cooordinates to image-level coordinates.
-
     Args:
         boxes_coords (Tensor): A tensor of shape (R, 4) that contains bounding boxes.
             coordinates.
         point_coords (Tensor): A tensor of shape (R, P, 2) that contains
             [0, 1] x [0, 1] box-normalized coordinates of the P sampled points.
-
     Returns:
         point_coords_wrt_image (Tensor): A tensor of shape (R, P, 2) that contains
             image-normalized coordinates of P sampled points.
@@ -256,12 +250,10 @@ def get_point_coords_wrt_roi(boxes_coords, point_coords):
 def get_certain_point_coords_on_grid(certainty_map, num_points):
     """
     Find `num_points` most uncertain points from `uncertainty_map` grid.
-
     Args:
         uncertainty_map (Tensor): A tensor of shape (N, 1, H, W) that contains uncertainty
             values for a set of points on a regular H x W grid.
         num_points (int): The number of points P to select.
-
     Returns:
         point_indices (Tensor): A tensor of shape (N, P) that contains indices from
             [0, H x W) of the most uncertain points.
