@@ -390,9 +390,9 @@ class PoseResNet(nn.Module):
                 "loss": loss,
                 "heatmap_loss": heatmap_loss,
                 "point_loss": point_loss,
-                'point_coords': point_coords,
-                'cat_boxes': cat_boxes,
-                'point_coords_wrt_heatmap': point_coords_wrt_heatmap
+                'point_coords': point_coords.clone(),
+                'cat_boxes': cat_boxes.clone(),
+                'point_coords_wrt_heatmap': point_coords_wrt_heatmap.clone()
             }
 
         else:
