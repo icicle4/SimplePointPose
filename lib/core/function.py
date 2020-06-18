@@ -19,7 +19,9 @@ from core.config import get_model_name
 from core.evaluate import accuracy
 from core.inference import get_final_preds
 from utils.transforms import flip_back
-from utils.vis import save_debug_images, save_train_debug_heatmaps, save_val_debug_heatmaps
+from utils.vis import save_debug_images, vis_single_bbox_and_sample_point, vis_stage_heatmaps
+
+import wandb
 
 
 logger = logging.getLogger(__name__)
@@ -40,8 +42,15 @@ def train(config, train_loader, model, optimizer, epoch,
     model.train()
 
     end = time.time()
+    TrainBboxSamplePoints = []
+    TrainGtImages = []
+    TrainGtHeatmaps = []
+    TrainPdImages = []
+    TrainPdHeatmaps = []
+
     for i, (input, target, target_weight, meta) in enumerate(train_loader):
         # measure data loading time
+        group_id = epoch * len(train_loader) + i
         data_time.update(time.time() - end)
 
         # compute output
@@ -50,8 +59,11 @@ def train(config, train_loader, model, optimizer, epoch,
         heatmap_loss = output_dict['heatmap_loss']
         point_loss = output_dict['point_loss']
 
+        coarse_heatmaps = output_dict['output']
+        cat_boxes = output_dict['cat_boxes']
+        point_coords_wrt_heatmap = output_dict['point_coords_wrt_heatmap']
+
         target = target.cuda(non_blocking=True)
-        target_weight = target_weight.cuda(non_blocking=True)
 
         # compute gradient and do update step
         optimizer.zero_grad()
@@ -87,25 +99,58 @@ def train(config, train_loader, model, optimizer, epoch,
                     heatmap_loss = heatmap_losses,
                     acc=acc)
             logger.info(msg)
-
-            writer = writer_dict['writer']
             global_steps = writer_dict['train_global_steps']
-            writer.add_scalar('train_loss', losses.val, global_steps)
-            writer.add_scalar('train_point_loss', point_losses.val, global_steps)
-            writer.add_scalar('train_heatmap_loss', heatmap_losses.val, global_steps)
-            writer.add_scalar('train_acc', acc.val, global_steps)
-            writer_dict['train_global_steps'] = global_steps + 1
 
-            prefix = '{}_{}'.format(os.path.join(output_dir, 'train'), i)
-            save_debug_images(config, input, meta, target, pred*4, output_dict['output'],
-                              prefix)
-            # save_train_debug_heatmaps(
-            #     output_dict, prefix
-            # )
+            TrainBboxSamplePoints.append(
+                wandb.Image(
+                    vis_single_bbox_and_sample_point(coarse_heatmaps, cat_boxes, point_coords_wrt_heatmap),
+                    caption='Train Epoch {} bbox and sample point'.format(epoch),
+                    grouping=group_id
+                )
+            )
+
+            gt_image, pred_image, hm_gt_image, hm_pred_image = save_debug_images(config,
+                                                                                 input[:1],
+                                                                                 meta, target,
+                                                                                 pred * 4, output_dict['output'])
+            TrainGtHeatmaps.append(
+                wandb.Image(
+                    hm_gt_image, caption='Train Gt heatmap', grouping=group_id
+                )
+            )
+            TrainGtImages.append(
+                wandb.Image(
+                    gt_image, caption='Train Gt Images', grouping=group_id
+                )
+            )
+            TrainPdHeatmaps.append(
+                wandb.Image(
+                    hm_pred_image, caption='Train Gt heatmap', grouping=group_id
+                )
+            )
+            TrainPdImages.append(
+                wandb.Image(
+                    pred_image, caption='Train Pred heatmap', grouping=group_id
+                )
+            )
+
+    wandb.log(
+        {
+            'Train Loss': losses.avg,
+            'Train Point Loss': point_losses.avg,
+            'Train Heatmap Loss': heatmap_losses.avg,
+            'Train Accuracy': acc.avg,
+            'Train BBox SamplePoints': TrainBboxSamplePoints,
+            'Train Gt Images': TrainGtImages,
+            'Train Pd Images': TrainPdImages,
+            'Train Gt Heatmaps': TrainGtHeatmaps,
+            'Train Pd Heatmaps': TrainPdHeatmaps
+        }
+    )
 
 
 def validate(config, val_loader, val_dataset, model, output_dir,
-             tb_log_dir, writer_dict=None):
+             tb_log_dir, epoch):
     batch_time = AverageMeter()
     coarse_acc = AverageMeter()
     refine_acc = AverageMeter()
@@ -121,12 +166,33 @@ def validate(config, val_loader, val_dataset, model, output_dir,
     filenames = []
     imgnums = []
     idx = 0
+
+    ValCoarseGtImages = []
+    ValCoarseGtHeatmaps = []
+    ValCoarsePdImages = []
+    ValCoarsePdHeatmaps = []
+
+    ValRefineGtImages = []
+    ValRefineGtHeatmaps = []
+    ValRefinePdImages = []
+    ValRefinePdHeatmaps = []
+
+    StageImages1 = []
+    StageImages2 = []
+    StageImages3 = []
+
+    StageRefineHeatmaps1 = []
+    StageRefineHeatmaps2 = []
+    StageRefineHeatmaps3 = []
+
     with torch.no_grad():
         end = time.time()
         for i, (input, target, target_weight, meta) in enumerate(val_loader):
             # compute output
+            group_id = epoch * len(val_loader) + i
             output_dict = model(input, target)
             refine_output, coarse_output = output_dict['refine'], output_dict['coarse']
+
             if config.TEST.FLIP_TEST:
                 # this part is ugly, because pytorch has not supported negative index
                 # input_flipped = model(input[:, :, :, ::-1])
@@ -155,7 +221,6 @@ def validate(config, val_loader, val_dataset, model, output_dir,
                 refine_output = (refine_output + refine_output_flipped) * 0.5
 
             target = target.cuda(non_blocking=True)
-            target_weight = target_weight.cuda(non_blocking=True)
 
             num_images = input.size(0)
             # measure accuracy and record loss
@@ -202,16 +267,105 @@ def validate(config, val_loader, val_dataset, model, output_dir,
                           coarse_acc=coarse_acc, refine_acc=refine_acc)
                 logger.info(msg)
 
-                coarse_prefix = '{}_{}_coarse'.format(os.path.join(output_dir, 'val'), i)
-                save_debug_images(config, input, meta, target, coarse_pred*4, coarse_output,
-                                  coarse_prefix)
+                #stage_point_indices = output_dict['stage_point_indices']
+                stage_gaussian_params = output_dict['stage_gaussian_params']
+                stage_interpolate_heatmaps = output_dict['stage_interpolate_heatmaps']
+                stage_refined_heatmaps = output_dict['stage_refined_heatmaps']
 
-                refine_prefix = '{}_{}_refine'.format(os.path.join(output_dir, 'val'), i)
-                save_debug_images(config, input, meta, target, refine_pred * 4, refine_output,
-                                  refine_prefix)
+                coarse_gt_image, coarse_pred_image, coarse_hm_gt_image, coarse_hm_pred_image = save_debug_images(config,
+                                                                                     input[:1],
+                                                                                     meta, target,
+                                                                                     coarse_pred * 4, coarse_output)
 
-                # save_val_debug_heatmaps(output_dict, refine_prefix)
+                refine_gt_image, refine_pred_image, refine_hm_gt_image, refine_hm_pred_image = save_debug_images(config,
+                                                                                     input[:1],
+                                                                                     meta, target,
+                                                                                     coarse_pred * 4, coarse_output)
 
+                stage_ims = vis_stage_heatmaps(stage_interpolate_heatmaps, stage_gaussian_params)
+                stage_refined_ims = vis_stage_heatmaps(stage_refined_heatmaps, stage_gaussian_params)
+
+                StageImages1.append(
+                    wandb.Image(
+                        stage_ims[0], caption='Stage Image 1', grouping=group_id
+                    )
+                )
+                StageImages2.append(
+                    wandb.Image(
+                        stage_ims[1], caption='Stage Image 2', grouping=group_id
+                    )
+                )
+                StageImages3.append(
+                    wandb.Image(
+                        stage_ims[2], caption='Stage Image 3', grouping=group_id
+                    )
+                )
+
+                StageRefineHeatmaps1.append(
+                    wandb.Image(
+                        stage_refined_ims[0], caption='Stage Refine Heatmaps 1', grouping=group_id
+                    )
+                )
+
+                StageRefineHeatmaps2.append(
+                    wandb.Image(
+                        stage_refined_ims[1], caption='Stage Refine Heatmaps 2', grouping=group_id
+                    )
+                )
+
+                StageRefineHeatmaps3.append(
+                    wandb.Image(
+                        stage_refined_ims[2], caption='Stage Refine Heatmaps 3', grouping=group_id
+                    )
+                )
+
+                ValCoarseGtImages.append(
+                    wandb.Image(
+                        coarse_gt_image, caption='Val Coarse Gt Image', grouping=group_id
+                    )
+                )
+                
+                ValRefineGtImages.append(
+                    wandb.Image(
+                        refine_gt_image, caption='Val Refine Gt Image', grouping=group_id
+                    )
+                )
+                
+                ValCoarseGtHeatmaps.append(
+                    wandb.Image(
+                        coarse_hm_gt_image, caption='Val Coarse Gt Heatmap', grouping=group_id
+                    )
+                )
+                
+                ValCoarseGtHeatmaps.append(
+                    wandb.Image(
+                        refine_hm_gt_image, caption='Val Refine Gt Heatmap', grouping=group_id
+                    )
+                )
+                
+                ValCoarsePdImages.append(
+                    wandb.Image(
+                        coarse_pred_image, caption='Val Coarse Pd Image', grouping=group_id
+                    )
+                )
+                
+                ValRefineGtImages.append(
+                    wandb.Image(
+                        refine_pred_image, caption='Val Refine Pd Image', grouping=group_id
+                    )
+                )
+                
+                ValCoarsePdHeatmaps.append(
+                    wandb.Image(
+                        coarse_hm_pred_image, caption='Val Coarse Pd Heatmap', grouping=group_id
+                    )
+                )
+                
+                ValRefineGtHeatmaps.append(
+                    wandb.Image(
+                        refine_hm_pred_image, caption='Val Refine Pd heatmaps', grouping=group_id
+                    )
+                )
 
         name_values, perf_indicator = val_dataset.evaluate(
             config, all_preds, output_dir, all_boxes, image_path,
@@ -224,18 +378,26 @@ def validate(config, val_loader, val_dataset, model, output_dir,
         else:
             _print_name_value(name_values, full_arch_name)
 
-        if writer_dict:
-            writer = writer_dict['writer']
-            global_steps = writer_dict['valid_global_steps']
-            writer.add_scalar('valid_coarse_acc', coarse_acc.avg, global_steps)
-            writer.add_scalar('valid_refine_acc', refine_acc.avg, global_steps)
-            if isinstance(name_values, list):
-                for name_value in name_values:
-                    writer.add_scalars('valid', dict(name_value), global_steps)
-            else:
-                writer.add_scalars('valid', dict(name_values), global_steps)
-            writer_dict['valid_global_steps'] = global_steps + 1
-
+    wandb.log(
+        {
+            'Val coarse acc': coarse_acc.avg,
+            'Val refine acc': refine_acc.avg,
+            'Val Coarse Gt Images': ValCoarseGtImages,
+            'Val Coarse Pd Images': ValCoarsePdImages,
+            'Val Coarse Gt Heatmaps': ValCoarseGtHeatmaps,
+            'Val Coarse Pd Heatmaps': ValCoarsePdHeatmaps,
+            'Val Refine Gt Images': ValRefineGtImages,
+            'Val Refine Pd Images': ValRefinePdImages,
+            'Val Refine Gt Heatmaps': ValRefineGtHeatmaps,
+            'Val Refine Pd Heatmaps': ValRefinePdHeatmaps,
+            'Val Stage Heatmap 1': StageImages1,
+            'Val Stage Heatmap 2': StageImages2,
+            'Val Stage Heatmap 3': StageImages3,
+            'Val Stage Refine Heatmap 1': StageRefineHeatmaps1,
+            'Val Stage Refine Heatmap 2': StageRefineHeatmaps2,
+            'Val Stage Refine Heatmap 3': StageRefineHeatmaps3
+        }
+    )
     return perf_indicator
 
 

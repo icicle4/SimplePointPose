@@ -40,7 +40,7 @@ def gaussian_interpolate(heatmap, upsample_scale):
     indices = torch.from_numpy(np.indices(np.array(heatmap.shape) * upsample_scale) / upsample_scale).float().cuda()
     new_heatmap = fit(*indices)
 
-    return new_heatmap
+    return new_heatmap, params
 
 
 def gaussian(height, center_x, center_y, width_x, width_y):

@@ -37,9 +37,10 @@ from utils.utils import create_logger
 import dataset
 import models
 
+import wandb
 import os
 
-os.environ['CUDA_LAUNCH_BLOCKING']= "1"
+#os.environ['CUDA_LAUNCH_BLOCKING']= "1"
 
 
 def parse_args():
@@ -97,6 +98,9 @@ def main():
     cudnn.benchmark = config.CUDNN.BENCHMARK
     torch.backends.cudnn.deterministic = config.CUDNN.DETERMINISTIC
     torch.backends.cudnn.enabled = config.CUDNN.ENABLED
+
+    wandb.init(entity='icicle314', project='PointPose')
+    wandb.watch_called = False
 
     model = eval('models.'+config.MODEL.NAME+'.get_pose_net')(
         config, is_train=True
@@ -205,6 +209,8 @@ def main():
             'perf': perf_indicator,
             'optimizer': optimizer.state_dict(),
         }, best_model, final_output_dir)
+
+    wandb.watch(model, log="all")
 
     final_model_state_file = os.path.join(final_output_dir,
                                           'final_state.pth.tar')
