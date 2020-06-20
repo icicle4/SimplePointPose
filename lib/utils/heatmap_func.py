@@ -1,112 +1,73 @@
 import numpy as np
 import torch
 import torch.nn.functional as F
-import json
-import time
+import scipy.optimize as opt
+
+
+def simple_gauss2d(xy, amp=None, x0=None, y0=None, a=0, c=0):
+    x, y = xy
+    inner = a * (x - x0) ** 2
+    inner += 2 * a * (x - x0) ** 2 * (y - y0) ** 2
+    inner += c * (y - y0) ** 2
+    return amp * np.exp(-inner)
+
+
+def cal_gauss_param(heatmap):
+    height, width = heatmap.shape
+    xi = np.linspace(0, 1, width + 1)[:-1] + .5 / width
+    yi = np.linspace(0, 1, height + 1)[:-1] + .5 / height
+
+    Ys = yi.flatten()
+    Xs = xi.flatten()
+    zobs = heatmap.flatten()
+    xy = np.concatenate([Xs[None, :], Ys[None, :]], axis=0)
+    x, y = xy
+    i = zobs.argmax()
+    guess = [1, 1]
+    simply_gauss = lambda xy, a, c: simple_gauss2d(xy, amp=zobs.max(), x0=x[i], y0=y[i], a=a, c=c)
+    pred_params, uncert_cov = opt.curve_fit(simply_gauss, xy, zobs, p0=guess)
+    return pred_params, simply_gauss
+
+
+def gaussian_interpolate(heatmap, upscale=1):
+    np_heatmap = heatmap.clone().detach().cpu().numpy()
+    height, width = heatmap.shape
+
+    params, gauss_func = cal_gauss_param(np_heatmap)
+
+    up_height, up_width = height * upscale, width * upscale
+
+    xi = np.linspace(0, 1, up_width + 1)[:-1] + .5 / up_width
+    yi = np.linspace(0, 1, up_height + 1)[:-1] + .5 / up_height
+
+    Ys = yi.flatten()
+    Xs = xi.flatten()
+    xy = np.concatenate([Xs[None, :], Ys[None, :]], axis=0)
+
+    zpred = gauss_func(xy, *params)
+    return torch.from_numpy(zpred).cuda().view(up_height, up_width)
+
+
+def gaussian_sample(heatmap, point_coord):
+    np_heatmap = heatmap.clone().detach().cpu().numpy()
+    params, gauss_func = cal_gauss_param(np_heatmap)
+    xy = point_coord.clone().detach().cpu().numpy()
+    zpred = gauss_func(xy, *params).cuda()
+    return zpred
+
 
 def calculate_uncertain_gaussian_heatmap_func(heatamp, upscale=1):
-    time1 = time.time()
+
     if len(heatamp.size()) == 3:
         heatamp = torch.squeeze(heatamp, dim=0)
 
     if upscale == 1:
-        #print('heatmap', heatamp.size(), heatamp.type(), heatamp.device)
-        gaussian_heatmap, _ = gaussian_interpolate(heatamp, 1)
-        #print('gaussian inter', gaussian_heatmap)
-        #print('row',row_heatmap.device, row_heatmap.type())
-        #print('gaussian',gaussian_heatmap.device, gaussian_heatmap.type())
+        gaussian_heatmap = gaussian_interpolate(heatamp, 1)
         diff_map = torch.abs(heatamp - gaussian_heatmap)
-        time2 = time.time()
-        #print('time cost', time2 - time1)
     else:
-        gaussian_heatmap, _ = gaussian_interpolate(heatamp, upscale)
+        gaussian_heatmap = gaussian_interpolate(heatamp, upscale)
         interpolated_heatmap = F.interpolate(
             heatamp, scale_factor=upscale, mode="bilinear", align_corners=False
         ).squeeze(0)
         diff_map = torch.abs(interpolated_heatmap - gaussian_heatmap)
     return diff_map
-
-
-def gaussian_interpolate(heatmap, upsample_scale):
-    # with open('res.json', 'w') as f:
-    #     json.dump(heatmap.detach().cpu().numpy().tolist(), f)
-    #
-    # exit()
-    time1 = time.time()
-    params = moment_torch(heatmap)
-
-    if sum([torch.isnan(p) for p in params]) > 0:
-        params = [
-            torch.tensor(0.00001).cuda(),
-            torch.tensor(24).cuda(),
-            torch.tensor(32).cuda(),
-            torch.tensor(72).cuda(),
-            torch.tensor(96).cuda(),
-        ]
-
-    fit = gaussian_torch(*params)
-
-    params = [p * upsample_scale for p in params]
-    indices = torch.from_numpy(np.indices(np.array(heatmap.shape) * upsample_scale) / upsample_scale).float().cuda()
-    new_heatmap = fit(*indices)
-    time2 = time.time()
-    #print('gaussian time cost', time2 - time1)
-
-    return new_heatmap, params
-
-
-def gaussian(height, center_x, center_y, width_x, width_y):
-    """Returns a gaussian function with the given parameters"""
-    width_x = float(width_x)
-    width_y = float(width_y)
-    return lambda x,y: height*np.exp(
-                -(((center_x-x)/width_x)**2+((center_y-y)/width_y)**2)/2)
-
-
-def moments(data):
-    """Returns (height, x, y, width_x, width_y)
-    the gaussian parameters of a 2D distribution by calculating its
-    moments """
-    total = data.sum()
-    X, Y = np.indices(data.shape)
-    x = (X*data).sum()/total
-    y = (Y*data).sum()/total
-    col = data[:, int(y)]
-    width_x = np.sqrt(np.abs((np.arange(col.size)-y)**2*col).sum()/col.sum())
-    row = data[int(x), :]
-    width_y = np.sqrt(np.abs((np.arange(row.size)-x)**2*row).sum()/row.sum())
-    height = data.max()
-    return height, x, y, width_x, width_y
-
-
-def gaussian_torch(height, center_x, center_y, width_x, width_y):
-    """Returns a gaussian function with the given parameters"""
-    width_x = width_x.float()
-    width_y = width_y.float()
-    return lambda x,y: height*torch.exp(
-                -(((center_x-x)/width_x)**2+((center_y-y)/width_y)**2)/2)
-
-
-def moment_torch(data):
-    #print('data', data)
-    height, width = data.size()
-    #print('height, width', height, width)
-    total = torch.sum(data)
-    #print('total', total)
-    X, Y = np.indices(data.shape)
-    X = torch.from_numpy(X).cuda()
-    Y = torch.from_numpy(Y).cuda()
-    x = torch.sum((X * data)) / total
-    y = torch.sum((Y * data)) / total
-
-    if torch.isnan(x) or torch.isnan(y):
-        x = torch.tensor([100]).cuda()
-        y = torch.tensor([100]).cuda()
-    col = data[:, torch.clamp(y, -width+1, width-1).long()]
-    width_x = torch.sqrt(torch.sum(torch.abs(torch.arange(col.size()[0]).cuda() - y)**2 * col) / torch.sum(col))
-    row = data[torch.clamp(x, -height+1, height-1).long(), :]
-    width_y = torch.sqrt(torch.sum(torch.abs(torch.arange(row.size()[0]).cuda() - x)**2 * row) / torch.sum(row))
-    height = torch.max(data)
-    #print('height', height)
-    return height, x, y, width_x, width_y
-

@@ -70,27 +70,12 @@ def vis_stage_heatmaps(stage_heatmaps, gaussian_heatmap_params):
     for i in range(stage_num):
         heatmap = stage_heatmaps[i].clone().detach().cpu().numpy()
 
-        gaussian_heatmap, param = gaussian_heatmap_params[i]
+        gaussian_heatmap= gaussian_heatmap_params[i]
         gaussian_heatmap = gaussian_heatmap.clone().detach().cpu().numpy()
 
-        new_param = [p.detach().cpu().numpy() for p in param]
-
         plt.matshow(heatmap, cmap=plt.cm.gist_earth_r)
-
-        #fit = gaussian(*new_param)
-        #indices = np.indices(np.array(heatmap.shape))
-        #plt.contour(fit(*indices), cmap=plt.cm.copper)
         plt.contour(gaussian_heatmap, cmap=plt.cm.copper)
         ax = plt.gca()
-        (height, x, y, width_x, width_y) = new_param
-
-        plt.text(0.95, 0.05, """
-            x : %.1f
-            y : %.1f
-            width_x : %.1f
-            width_y : %.1f""" % (x, y, width_x, width_y),
-                 fontsize=16, horizontalalignment='right',
-                 verticalalignment='bottom', transform=ax.transAxes)
 
         buf = io.BytesIO()
         plt.savefig(buf, format='png')
