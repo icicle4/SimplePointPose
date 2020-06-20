@@ -1,22 +1,25 @@
 import numpy as np
 import torch
 import torch.nn.functional as F
-
+import json
+import time
 
 def calculate_uncertain_gaussian_heatmap_func(heatamp, upscale=1):
+    time1 = time.time()
     if len(heatamp.size()) == 3:
         heatamp = torch.squeeze(heatamp, dim=0)
 
     if upscale == 1:
         #print('heatmap', heatamp.size(), heatamp.type(), heatamp.device)
-        gaussian_heatmap = gaussian_interpolate(heatamp, 1)
-
+        gaussian_heatmap, _ = gaussian_interpolate(heatamp, 1)
         #print('gaussian inter', gaussian_heatmap)
         #print('row',row_heatmap.device, row_heatmap.type())
         #print('gaussian',gaussian_heatmap.device, gaussian_heatmap.type())
         diff_map = torch.abs(heatamp - gaussian_heatmap)
+        time2 = time.time()
+        #print('time cost', time2 - time1)
     else:
-        gaussian_heatmap = gaussian_interpolate(heatamp, upscale)
+        gaussian_heatmap, _ = gaussian_interpolate(heatamp, upscale)
         interpolated_heatmap = F.interpolate(
             heatamp, scale_factor=upscale, mode="bilinear", align_corners=False
         ).squeeze(0)
@@ -25,6 +28,11 @@ def calculate_uncertain_gaussian_heatmap_func(heatamp, upscale=1):
 
 
 def gaussian_interpolate(heatmap, upsample_scale):
+    # with open('res.json', 'w') as f:
+    #     json.dump(heatmap.detach().cpu().numpy().tolist(), f)
+    #
+    # exit()
+    time1 = time.time()
     params = moment_torch(heatmap)
 
     if sum([torch.isnan(p) for p in params]) > 0:
@@ -37,8 +45,12 @@ def gaussian_interpolate(heatmap, upsample_scale):
         ]
 
     fit = gaussian_torch(*params)
+
+    params = [p * upsample_scale for p in params]
     indices = torch.from_numpy(np.indices(np.array(heatmap.shape) * upsample_scale) / upsample_scale).float().cuda()
     new_heatmap = fit(*indices)
+    time2 = time.time()
+    #print('gaussian time cost', time2 - time1)
 
     return new_heatmap, params
 

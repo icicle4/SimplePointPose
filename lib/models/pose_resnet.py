@@ -422,10 +422,11 @@ class PoseResNet(nn.Module):
 
                         if i == 0 and j == 0:
                             stage_gaussian_params.append(
-                                params
+                                [gaussian_heatmap, params]
                             )
+
                             stage_interpolate_heatmaps.append(
-                                interpolated_heatmap.clone()
+                                interpolated_heatmap.clone().squeeze(0)
                             )
 
                         error_map = torch.abs(gaussian_heatmap - interpolated_heatmap)

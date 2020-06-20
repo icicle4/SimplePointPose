@@ -52,7 +52,6 @@ def train(config, train_loader, model, optimizer, epoch,
         # measure data loading time
         group_id = epoch * len(train_loader) + i
         data_time.update(time.time() - end)
-
         # compute output
         output_dict = model(input, target)
         loss = output_dict['loss']
@@ -110,7 +109,7 @@ def train(config, train_loader, model, optimizer, epoch,
             )
 
             gt_image, pred_image, hm_gt_image, hm_pred_image = save_debug_images(config,
-                                                                                 input[:1],
+                                                                                 input,
                                                                                  meta, target,
                                                                                  pred * 4, output_dict['output'])
             TrainGtHeatmaps.append(
@@ -273,12 +272,12 @@ def validate(config, val_loader, val_dataset, model, output_dir,
                 stage_refined_heatmaps = output_dict['stage_refined_heatmaps']
 
                 coarse_gt_image, coarse_pred_image, coarse_hm_gt_image, coarse_hm_pred_image = save_debug_images(config,
-                                                                                     input[:1],
+                                                                                     input,
                                                                                      meta, target,
                                                                                      coarse_pred * 4, coarse_output)
 
                 refine_gt_image, refine_pred_image, refine_hm_gt_image, refine_hm_pred_image = save_debug_images(config,
-                                                                                     input[:1],
+                                                                                     input,
                                                                                      meta, target,
                                                                                      coarse_pred * 4, coarse_output)
 
@@ -366,6 +365,7 @@ def validate(config, val_loader, val_dataset, model, output_dir,
                         refine_hm_pred_image, caption='Val Refine Pd heatmaps', grouping=group_id
                     )
                 )
+
 
         name_values, perf_indicator = val_dataset.evaluate(
             config, all_preds, output_dir, all_boxes, image_path,

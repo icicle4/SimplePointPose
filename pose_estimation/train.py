@@ -186,14 +186,15 @@ def main():
     for epoch in range(args.start_epoch, config.TRAIN.END_EPOCH):
         lr_scheduler.step()
 
+        # perf_indicator = validate(config, valid_loader, valid_dataset, model,
+        #                           final_output_dir, tb_log_dir, epoch)
         # train for one epoch
         train(config, train_loader, model, optimizer, epoch,
               final_output_dir, tb_log_dir, writer_dict)
 
         # evaluate on validation set
         perf_indicator = validate(config, valid_loader, valid_dataset, model,
-                                  final_output_dir, tb_log_dir,
-                                  writer_dict)
+                                  final_output_dir, tb_log_dir, epoch)
 
         if perf_indicator > best_perf:
             best_perf = perf_indicator

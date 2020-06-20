@@ -58,26 +58,31 @@ def vis_single_bbox_and_sample_point(heatmaps, cat_bboxs, point_coords_wrt_heatm
     plt.savefig(buf, format='png')
     buf.seek(0)
     im = Image.open(buf)
-    buf.close()
+    #buf.close()
     return im
 
 
-def vis_stage_heatmaps(stage_heatmaps, params):
+def vis_stage_heatmaps(stage_heatmaps, gaussian_heatmap_params):
     stage_num = len(stage_heatmaps)
 
     stage_ims = []
 
     for i in range(stage_num):
         heatmap = stage_heatmaps[i].clone().detach().cpu().numpy()
-        params = params[i].clone().detach().cpu().numpy()
+
+        gaussian_heatmap, param = gaussian_heatmap_params[i]
+        gaussian_heatmap = gaussian_heatmap.clone().detach().cpu().numpy()
+
+        new_param = [p.detach().cpu().numpy() for p in param]
 
         plt.matshow(heatmap, cmap=plt.cm.gist_earth_r)
 
-        fit = gaussian(*params)
-        indices = np.indices(np.array(heatmap.shape))
-        plt.contour(fit(*indices), cmap=plt.cm.copper)
+        #fit = gaussian(*new_param)
+        #indices = np.indices(np.array(heatmap.shape))
+        #plt.contour(fit(*indices), cmap=plt.cm.copper)
+        plt.contour(gaussian_heatmap, cmap=plt.cm.copper)
         ax = plt.gca()
-        (height, x, y, width_x, width_y) = params
+        (height, x, y, width_x, width_y) = new_param
 
         plt.text(0.95, 0.05, """
             x : %.1f
@@ -91,7 +96,7 @@ def vis_stage_heatmaps(stage_heatmaps, params):
         plt.savefig(buf, format='png')
         buf.seek(0)
         im = Image.open(buf)
-        buf.close()
+        #buf.close()
         stage_ims.append(im)
 
     return stage_ims
