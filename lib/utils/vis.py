@@ -22,8 +22,6 @@ from matplotlib import pyplot as plt
 import os
 import matplotlib.patches as mpathes
 
-from utils.heatmap_func import gaussian
-
 
 def vis_single_bbox_and_sample_point(heatmaps, cat_bboxs, point_coords_wrt_heatmap):
     numpy_heatmaps = heatmaps.clone().detach().cpu().numpy()

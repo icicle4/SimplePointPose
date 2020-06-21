@@ -40,7 +40,7 @@ import models
 import wandb
 import os
 
-#os.environ['CUDA_LAUNCH_BLOCKING']= "1"
+os.environ['CUDA_LAUNCH_BLOCKING']= "1"
 
 
 def parse_args():

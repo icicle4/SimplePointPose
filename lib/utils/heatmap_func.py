@@ -12,15 +12,21 @@ def simple_gauss2d(xy, amp=None, x0=None, y0=None, a=0, c=0):
     return amp * np.exp(-inner)
 
 
-def cal_gauss_param(heatmap):
-    height, width = heatmap.shape
+def indices(height, width):
     xi = np.linspace(0, 1, width + 1)[:-1] + .5 / width
     yi = np.linspace(0, 1, height + 1)[:-1] + .5 / height
+    xi, yi = np.meshgrid(xi, yi)
 
-    Ys = yi.flatten()
-    Xs = xi.flatten()
+    xi = xi.flatten()
+    yi = yi.flatten()
+    xy = np.concatenate([xi[None, :], yi[None, :]], axis=0)
+    return xy
+
+
+def cal_gauss_param(heatmap):
+    height, width = heatmap.shape
+    xy = indices(height, width)
     zobs = heatmap.flatten()
-    xy = np.concatenate([Xs[None, :], Ys[None, :]], axis=0)
     x, y = xy
     i = zobs.argmax()
     guess = [1, 1]
@@ -30,29 +36,36 @@ def cal_gauss_param(heatmap):
 
 
 def gaussian_interpolate(heatmap, upscale=1):
-    np_heatmap = heatmap.clone().detach().cpu().numpy()
-    height, width = heatmap.shape
-
-    params, gauss_func = cal_gauss_param(np_heatmap)
-
-    up_height, up_width = height * upscale, width * upscale
-
-    xi = np.linspace(0, 1, up_width + 1)[:-1] + .5 / up_width
-    yi = np.linspace(0, 1, up_height + 1)[:-1] + .5 / up_height
-
-    Ys = yi.flatten()
-    Xs = xi.flatten()
-    xy = np.concatenate([Xs[None, :], Ys[None, :]], axis=0)
-
-    zpred = gauss_func(xy, *params)
-    return torch.from_numpy(zpred).cuda().view(up_height, up_width)
+    try:
+        np_heatmap = heatmap.clone().detach().cpu().numpy()
+        height, width = heatmap.shape
+        params, gauss_func = cal_gauss_param(np_heatmap)
+        up_height, up_width = height * upscale, width * upscale
+        xy = indices(up_height, up_width)
+        zpred = gauss_func(xy, *params)
+        zpred = torch.from_numpy(zpred).cuda().float().view(up_height, up_width)
+    except RuntimeError as e:
+        if upscale == 1:
+            zpred = heatmap
+        else:
+            zpred = F.interpolate(
+                heatmap.unsqueeze(0), scale_factor=upscale, mode="bilinear", align_corners=False
+            ).squeeze(0)
+    #print('inter zpred', zpred.size())
+    return zpred
 
 
 def gaussian_sample(heatmap, point_coord):
-    np_heatmap = heatmap.clone().detach().cpu().numpy()
-    params, gauss_func = cal_gauss_param(np_heatmap)
-    xy = point_coord.clone().detach().cpu().numpy()
-    zpred = gauss_func(xy, *params).cuda()
+    try:
+        np_heatmap = heatmap.clone().detach().cpu().numpy()
+        params, gauss_func = cal_gauss_param(np_heatmap)
+        xy = point_coord.clone().detach().cpu().numpy()
+        zpred = gauss_func(xy, *params)
+        zpred = torch.from_numpy(zpred).cuda().float()
+
+    except RuntimeError as e:
+        zpred = F.grid_sample(heatmap[None, None, :, :], 2 * point_coord[None, None, :, :] - 1.0).squeeze()
+    #print('sample zpred', zpred.size())
     return zpred
 
 

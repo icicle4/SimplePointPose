@@ -333,7 +333,6 @@ class PoseResNet(nn.Module):
                 for i in range(D):
                     for j in range(C):
                         point_coord_wrt_heatmap = point_coords_wrt_heatmap[j, i]
-                        point_coord_wrt_heatmap = point_coord_wrt_heatmap.permute(1, 0)
                         heatmap = gt_heatmaps[i, j]
                         gt_point_logit = gaussian_sample(heatmap, point_coord_wrt_heatmap)
                         gt_point_logits.append(gt_point_logit[None, None, :])
