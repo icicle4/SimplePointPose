@@ -60,6 +60,21 @@ def vis_single_bbox_and_sample_point(heatmaps, cat_bboxs, point_coords_wrt_heatm
     return im
 
 
+def vis_gt_heatmap_and_gaussian(gt_heatmaps, gt_gaussians):
+    gt_heatmap = gt_heatmaps[0, 0].clone().detach().cpu().numpy()
+    gt_gaussian = gt_gaussians[0].clone().detach().cpu().numpy()
+
+    plt.matshow(gt_heatmap, cmap=plt.cm.gist_earth_r)
+    plt.contour(gt_gaussian, cmap=plt.cm.copper)
+    ax = plt.gca()
+
+    buf = io.BytesIO()
+    plt.savefig(buf, format='png')
+    buf.seek(0)
+    im = Image.open(buf)
+    return im
+
+
 def vis_stage_heatmaps(stage_heatmaps, gaussian_heatmap_params):
     stage_num = len(stage_heatmaps)
 

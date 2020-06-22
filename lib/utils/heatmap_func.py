@@ -41,35 +41,35 @@ def gauss2d(xy, amp, x0, y0, a, c):
 
 
 def gaussian_interpolate(heatmap, upscale=1):
-    try:
-        time1 = time.time()
-        np_heatmap = heatmap.clone().detach().cpu().numpy()
-        height, width = np_heatmap.shape[-2:]
-        up_height, up_width = height * upscale, width * upscale
-        params = gaussian_param(np_heatmap)
-        xy = generate_xy(up_height, up_width)
-        zpred = torch.from_numpy(gauss2d(xy, *params)).type(dtype).view(up_height, up_width)
-        time2 = time.time()
+    # try:
+    time1 = time.time()
+    np_heatmap = heatmap.clone().detach().cpu().numpy()
+    height, width = np_heatmap.shape[-2:]
+    up_height, up_width = height * upscale, width * upscale
+    params = gaussian_param(np_heatmap)
+    xy = generate_xy(up_height, up_width)
+    zpred = torch.from_numpy(gauss2d(xy, *params)).type(dtype).view(up_height, up_width)
+    time2 = time.time()
         #print('time', time2 - time1)
-    except RuntimeError as e:
-        print('interpolate RunTimeError')
-        if upscale == 1:
-            zpred = heatmap
-        else:
-            zpred = F.interpolate(
-                heatmap.unsqueeze(0), scale_factor=upscale, mode="bilinear", align_corners=False
-            ).squeeze(0)
+    # except RuntimeError as e:
+    #     print('interpolate RunTimeError')
+    #     if upscale == 1:
+    #         zpred = heatmap
+    #     else:
+    #         zpred = F.interpolate(
+    #             heatmap.unsqueeze(0), scale_factor=upscale, mode="bilinear", align_corners=False
+    #         ).squeeze(0)
     return zpred
 
 
 def gaussian_sample(heatmap, point_coord):
-    try:
-        np_heatmap = heatmap.clone().detach().cpu().numpy()
-        params = gaussian_param(np_heatmap)
-        xy = point_coord.clone().permute(1, 0).detach().cpu().numpy()
-        zpred = torch.from_numpy(gauss2d(xy, *params)).type(dtype)
-    except RuntimeError as e:
-        zpred = F.grid_sample(heatmap[None, None, :, :], 2 * point_coord[None, None, :, :] - 1.0).squeeze()
+    #try:
+    np_heatmap = heatmap.clone().detach().cpu().numpy()
+    params = gaussian_param(np_heatmap)
+    xy = point_coord.clone().permute(1, 0).detach().cpu().numpy()
+    zpred = torch.from_numpy(gauss2d(xy, *params)).type(dtype)
+    # except RuntimeError as e:
+    #     zpred = F.grid_sample(heatmap[None, None, :, :], 2 * point_coord[None, None, :, :] - 1.0).squeeze()
     return zpred
 
 

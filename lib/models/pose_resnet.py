@@ -329,12 +329,21 @@ class PoseResNet(nn.Module):
 
             with torch.no_grad():
                 gt_point_logits = []
+                gt_gaussians = []
                 D, C, H, W = gt_heatmaps.shape
                 for i in range(D):
                     for j in range(C):
                         point_coord_wrt_heatmap = point_coords_wrt_heatmap[j, i]
                         heatmap = gt_heatmaps[i, j]
-                        gt_point_logit = gaussian_sample(heatmap, point_coord_wrt_heatmap)
+                        gt_gaussian_params = gaussian_param(heatmap)
+
+                        xy = generate_xy(H, W)
+                        gt_gaussian = torch.from_numpy(gauss2d(xy, *gt_gaussian_params)).type(dtype).view(H, W)
+                        gt_gaussians.append(gt_gaussian)
+
+                        xy = point_coord_wrt_heatmap.clone().permute(1, 0).detach().cpu().numpy()
+                        gt_point_logit = torch.from_numpy(gauss2d(xy, *gt_gaussian_params)).type(dtype)
+
                         gt_point_logits.append(gt_point_logit[None, None, :])
                 gt_point_logits = torch.cat(gt_point_logits)
 
@@ -344,6 +353,8 @@ class PoseResNet(nn.Module):
             output_heatmaps = coarse_heatmaps.clone()
 
             return {
+                "gt_heatmap": gt_heatmaps,
+                "gt_gaussian": gt_gaussians,
                 "output": output_heatmaps,
                 "loss": loss,
                 "heatmap_loss": heatmap_loss,

@@ -19,7 +19,7 @@ from core.config import get_model_name
 from core.evaluate import accuracy
 from core.inference import get_final_preds
 from utils.transforms import flip_back
-from utils.vis import save_debug_images, vis_single_bbox_and_sample_point, vis_stage_heatmaps
+from utils.vis import *
 
 import wandb
 
@@ -47,6 +47,7 @@ def train(config, train_loader, model, optimizer, epoch,
     TrainGtHeatmaps = []
     TrainPdImages = []
     TrainPdHeatmaps = []
+    TrainGtGaussian = []
 
     for i, (input, target, target_weight, meta) in enumerate(train_loader):
         # measure data loading time
@@ -61,6 +62,7 @@ def train(config, train_loader, model, optimizer, epoch,
         coarse_heatmaps = output_dict['output']
         cat_boxes = output_dict['cat_boxes']
         point_coords_wrt_heatmap = output_dict['point_coords_wrt_heatmap']
+        gt_gaussians = output_dict['gt_gaussian']
 
         target = target.cuda(non_blocking=True)
 
@@ -108,6 +110,14 @@ def train(config, train_loader, model, optimizer, epoch,
                 )
             )
 
+            TrainGtGaussian.append(
+                wandb.Image(
+                    vis_gt_heatmap_and_gaussian(output_dict['gt_heatmap'], output_dict['gt_gaussian']),
+                    caption='Train Epoch {} {}th gt heatmap and gaussian'.format(epoch, i),
+                    grouping=group_id
+                )
+            )
+
             gt_image, pred_image, hm_gt_image, hm_pred_image = save_debug_images(config,
                                                                                  input,
                                                                                  meta, target,
@@ -143,7 +153,8 @@ def train(config, train_loader, model, optimizer, epoch,
             'Train Gt Images': TrainGtImages,
             'Train Pd Images': TrainPdImages,
             'Train Gt Heatmaps': TrainGtHeatmaps,
-            'Train Pd Heatmaps': TrainPdHeatmaps
+            'Train Pd Heatmaps': TrainPdHeatmaps,
+            'Train Gt Gaussian': TrainGtGaussian
         }
     )
 
