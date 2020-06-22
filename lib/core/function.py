@@ -112,13 +112,9 @@ def train(config, train_loader, model, optimizer, epoch,
                 )
             )
 
-            TrainGtGaussian.append(
-                wandb.Image(
-                    vis_gt_heatmap_and_gaussian(output_dict['gt_heatmap'], output_dict['gt_gaussian']),
-                    caption='Train Epoch {} {}th gt heatmap and gaussian'.format(epoch, i),
-                    grouping=group_id
-                )
-            )
+            TrainGtGaussian = [wandb.Image(im, caption='Train Epoch {} {}th gt heatmap and gaussian'.format(epoch, i)
+                                            ) for im in vis_gt_heatmap_and_gaussian(output_dict['gt_heatmap'],
+                                                                                   output_dict['gt_gaussian'])]
 
             # gt_image, pred_image, hm_gt_image, hm_pred_image = save_debug_images(config,
             #                                                                      input,
