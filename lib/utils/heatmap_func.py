@@ -17,6 +17,9 @@ def generate_xy(height, width):
 
 
 def gaussian_param(heatmap):
+    if isinstance(heatmap, torch.Tensor):
+        heatmap = heatmap.clone().detach().cpu().numpy()
+
     heatmap = np.clip(heatmap, 1e-5, 1.)
     height, width = heatmap.shape
     xy = generate_xy(height, width)
