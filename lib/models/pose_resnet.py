@@ -339,6 +339,9 @@ class PoseResNet(nn.Module):
 
                         xy = generate_xy(H, W)
                         gt_gaussian = torch.from_numpy(gauss2d(xy, *gt_gaussian_params)).type(dtype).view(H, W)
+
+                        print('gt gaussian diff', torch.sum(torch.abs(gt_gaussian - heatmap)))
+
                         gt_gaussians.append(gt_gaussian)
 
                         xy = point_coord_wrt_heatmap.clone().permute(1, 0).detach().cpu().numpy()
