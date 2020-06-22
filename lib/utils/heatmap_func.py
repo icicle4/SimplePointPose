@@ -7,9 +7,9 @@ dtype = torch.cuda.FloatTensor if torch.cuda.is_available() else torch.FloatTens
 
 
 def generate_xy(height, width):
-    xi = (np.linspace(0, 1, width + 1)[:-1].type(dtype) + .5) / width
-    yi = (np.linspace(0, 1, height + 1)[:-1].type(dtype) + .5) / height
-    xi, yi = torch.meshgrid(xi, yi)
+    xi = (np.linspace(0, 1, width + 1)[:-1] + .5) / width
+    yi = (np.linspace(0, 1, height + 1)[:-1] + .5) / height
+    xi, yi = np.meshgrid(xi, yi)
     Ys = yi.flatten()
     Xs = xi.flatten()
     xy = np.concatenate([Xs[None, :], Ys[None, :]], axis=0)
@@ -34,9 +34,9 @@ def gaussian_param(heatmap):
 
 def gauss2d(xy, amp, x0, y0, a, c):
     x, y = xy
-    inner = a * np.pow(x - x0, 2)
+    inner = a * np.power(x - x0, 2)
     inner += 2 * c * (x - x0) * (y - y0)
-    inner += a * np.pow(y-y0, 2)
+    inner += a * np.power(y-y0, 2)
     return amp * np.exp(-inner)
 
 
@@ -50,8 +50,9 @@ def gaussian_interpolate(heatmap, upscale=1):
         xy = generate_xy(up_height, up_width)
         zpred = torch.from_numpy(gauss2d(xy, *params)).type(dtype).view(up_height, up_width)
         time2 = time.time()
-        print('time', time2 - time1)
+        #print('time', time2 - time1)
     except RuntimeError as e:
+        print('interpolate RunTimeError')
         if upscale == 1:
             zpred = heatmap
         else:
@@ -75,7 +76,7 @@ def gaussian_sample(heatmap, point_coord):
 def generate_M(xy, x0, y0, height, width):
     x, y = xy
     M = np.zeros((height * width, 2))
-    M[:, 0] = np.pow(x - x0, 2) + np.pow(y - y0, 2)
+    M[:, 0] = np.power(x - x0, 2) + np.power(y - y0, 2)
     M[:, 1] = 2 * (x-x0) * (y-y0)
     return M
 
