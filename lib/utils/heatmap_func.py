@@ -2,13 +2,14 @@ import numpy as np
 import torch
 import torch.nn.functional as F
 import time
+import math
 
 dtype = torch.cuda.FloatTensor if torch.cuda.is_available() else torch.FloatTensor
 
 
 def generate_xy(height, width):
-    xi = (np.linspace(0, 1, width + 1)[:-1] + .5) / width
-    yi = (np.linspace(0, 1, height + 1)[:-1] + .5) / height
+    xi = np.arange(0, width)
+    yi = np.arange(0, height)
     xi, yi = np.meshgrid(xi, yi)
     Ys = yi.flatten()
     Xs = xi.flatten()
@@ -21,67 +22,51 @@ def gaussian_param(heatmap):
         heatmap = heatmap.clone().detach().cpu().numpy()
 
     heatmap = np.clip(heatmap, 1e-5, 1.)
-    height, width = heatmap.shape
-    xy = generate_xy(height, width)
-    zobs = heatmap.flatten()
-    i = zobs.argmax()
+    init_delta = 8
+    init_H, init_W = 64, 48
+
+    height, width = heatmap.shape[-2:]
+    delta = 1 / (init_delta * (4 ** math.log((height / init_H), 2)))
+
+    idxes = np.where(heatmap > 1e-3)
+    y, x = idxes
+    heigh_value_heatmap = heatmap[y, x]
+
+    if not heigh_value_heatmap.any():
+        return [0, 0.5, 0.5, 0]
+    else:
+        zobs = heigh_value_heatmap.flatten()
+        i = zobs.argmax()
+        x0, y0 = x[i], y[i]
+        amp = zobs.max()
+        return [amp, x0, y0, delta]
+
+
+def gauss2d(xy, amp, x0, y0, a):
     x, y = xy
-
-    x0, y0 = x[i], y[i]
-    M = generate_M(xy, x0, y0, height, width)
-    amp = zobs.max()
-    target = -np.log(zobs / amp)
-    a, c = np.linalg.lstsq(M, target, rcond=None)[0]
-    return [amp, x0, y0, a, c]
-
-
-def gauss2d(xy, amp, x0, y0, a, c):
-    x, y = xy
-    inner = a * np.power(x - x0, 2)
-    inner += 2 * c * (x - x0) * (y - y0)
-    inner += a * np.power(y-y0, 2)
+    inner = a * (np.power(x - x0, 2) + np.power(y-y0, 2))
     return amp * np.exp(-inner)
 
 
 def gaussian_interpolate(heatmap, upscale=1):
-    # try:
-    time1 = time.time()
     np_heatmap = heatmap.clone().detach().cpu().numpy()
+    params = gaussian_param(np_heatmap)
+    new_params = [params[0], upscale * params[1], upscale * params[2], params[3] / (2 ** upscale)]
     height, width = np_heatmap.shape[-2:]
     up_height, up_width = height * upscale, width * upscale
-    params = gaussian_param(np_heatmap)
     xy = generate_xy(up_height, up_width)
-    zpred = torch.from_numpy(gauss2d(xy, *params)).type(dtype).view(up_height, up_width)
-    time2 = time.time()
-        #print('time', time2 - time1)
-    # except RuntimeError as e:
-    #     print('interpolate RunTimeError')
-    #     if upscale == 1:
-    #         zpred = heatmap
-    #     else:
-    #         zpred = F.interpolate(
-    #             heatmap.unsqueeze(0), scale_factor=upscale, mode="bilinear", align_corners=False
-    #         ).squeeze(0)
-    return zpred
+    pred = torch.from_numpy(gauss2d(xy, *new_params)).type(dtype).view(up_height, up_width)
+    return pred
 
 
 def gaussian_sample(heatmap, point_coord):
-    #try:
     np_heatmap = heatmap.clone().detach().cpu().numpy()
     params = gaussian_param(np_heatmap)
     xy = point_coord.clone().permute(1, 0).detach().cpu().numpy()
-    zpred = torch.from_numpy(gauss2d(xy, *params)).type(dtype)
-    # except RuntimeError as e:
-    #     zpred = F.grid_sample(heatmap[None, None, :, :], 2 * point_coord[None, None, :, :] - 1.0).squeeze()
-    return zpred
-
-
-def generate_M(xy, x0, y0, height, width):
-    x, y = xy
-    M = np.zeros((height * width, 2))
-    M[:, 0] = np.power(x - x0, 2) + np.power(y - y0, 2)
-    M[:, 1] = 2 * (x-x0) * (y-y0)
-    return M
+    height, width = heatmap.shape[-2:]
+    xy = xy * torch.tensor([[height], [width]]).type(dtype)
+    pred = torch.from_numpy(gauss2d(xy, *params)).type(dtype)
+    return pred
 
 
 def calculate_uncertain_gaussian_heatmap_func(heatamp, upscale=1):
