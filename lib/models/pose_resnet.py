@@ -17,9 +17,6 @@ from collections import OrderedDict
 from utils.point_func import *
 import fvcore.nn.weight_init as weight_init
 from utils.heatmap_func import *
-from utils.vis import vis_bbox_and_sample_point
-
-
 
 BN_MOMENTUM = 0.1
 logger = logging.getLogger(__name__)
@@ -339,11 +336,7 @@ class PoseResNet(nn.Module):
 
                         xy = generate_xy(H, W)
                         gt_gaussian = torch.from_numpy(gauss2d(xy, *gt_gaussian_params)).type(dtype).view(H, W)
-
-                        print('gt gaussian diff', torch.sum(torch.abs(gt_gaussian - heatmap)))
-
                         gt_gaussians.append(gt_gaussian)
-
                         xy = point_coord_wrt_heatmap.clone().permute(1, 0).detach().cpu().numpy()
                         gt_point_logit = torch.from_numpy(gauss2d(xy, *gt_gaussian_params)).type(dtype)
 
