@@ -278,7 +278,8 @@ class PoseResNet(nn.Module):
         return nn.Sequential(*layers)
 
     def forward(self, x, gt_heatmaps):
-
+        x = x.cuda()
+        gt_heatmaps = gt_heatmaps.cuda()
         x = self.conv1(x)
         x = self.bn1(x)
         x = self.relu(x)
