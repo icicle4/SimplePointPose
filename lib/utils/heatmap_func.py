@@ -57,12 +57,9 @@ def exception_loc(heatmap):
     normalized_heatmap = torch.pow(torch_heatmap, 2) / torch.sum(torch.pow(torch_heatmap, 2))
     height, width = heatmap.shape
     x, y = generate_xy(height, width)
-
     y = torch.from_numpy(y).type(torch.FloatTensor).view(height, width)
     x = torch.from_numpy(x).type(torch.FloatTensor).view(height, width)
-    except_loc = (float(torch.sum(normalized_heatmap * x).detach().cpu().numpy()),
-                  float(torch.sum(normalized_heatmap * y).detach().cpu().numpy()))
-    return except_loc
+    return torch.sum(normalized_heatmap * x).item(), torch.sum(normalized_heatmap * y).item()
 
 
 def gaussian_param(heatmap):
