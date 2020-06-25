@@ -15,6 +15,54 @@ def generate_xy(height, width):
     Xs = xi.flatten()
     xy = np.concatenate([Xs[None, :], Ys[None, :]], axis=0)
     return xy
+#
+#
+# def gaussian_param(heatmap):
+#     if isinstance(heatmap, torch.Tensor):
+#         heatmap = heatmap.clone().detach().cpu().numpy()
+#
+#     heatmap = np.clip(heatmap, 1e-5, 1.)
+#     init_delta = 8
+#     init_H, init_W = 64, 48
+#
+#     height, width = heatmap.shape[-2:]
+#     delta = 1 / (init_delta * (4 ** math.log((height / init_H), 2)))
+#
+#     idxes = np.where(heatmap > 1e-3)
+#     y, x = idxes
+#     heigh_value_heatmap = heatmap[y, x]
+#
+#     if not heigh_value_heatmap.any():
+#         return [0, 0.5, 0.5, 0]
+#     else:
+#         zobs = heigh_value_heatmap.flatten()
+#         i = zobs.argmax()
+#         x0, y0 = x[i], y[i]
+#         amp = zobs.max()
+#         return [amp, x0, y0, delta]
+
+
+def gauss2d(xy, amp, x0, y0, a):
+    x, y = xy
+    inner = a * (np.power(x - x0, 2) + np.power(y-y0, 2))
+    return amp * np.exp(-inner)
+
+
+def exception_loc(heatmap):
+    if not isinstance(heatmap, torch.Tensor):
+        torch_heatmap = torch.from_numpy(heatmap).type(torch.FloatTensor)
+    else:
+        torch_heatmap = heatmap
+
+    normalized_heatmap = torch.pow(torch_heatmap, 2) / torch.sum(torch.pow(torch_heatmap, 2))
+    height, width = heatmap.shape
+    x, y = generate_xy(height, width)
+
+    y = torch.from_numpy(y).type(torch.FloatTensor).view(height, width)
+    x = torch.from_numpy(x).type(torch.FloatTensor).view(height, width)
+    except_loc = (float(torch.sum(normalized_heatmap * x).detach().cpu().numpy()),
+                  float(torch.sum(normalized_heatmap * y).detach().cpu().numpy()))
+    return except_loc
 
 
 def gaussian_param(heatmap):
@@ -35,17 +83,10 @@ def gaussian_param(heatmap):
     if not heigh_value_heatmap.any():
         return [0, 0.5, 0.5, 0]
     else:
+        loc = exception_loc(heatmap)
         zobs = heigh_value_heatmap.flatten()
-        i = zobs.argmax()
-        x0, y0 = x[i], y[i]
         amp = zobs.max()
-        return [amp, x0, y0, delta]
-
-
-def gauss2d(xy, amp, x0, y0, a):
-    x, y = xy
-    inner = a * (np.power(x - x0, 2) + np.power(y-y0, 2))
-    return amp * np.exp(-inner)
+        return [amp, loc[0], loc[1], delta]
 
 
 def gaussian_interpolate(heatmap, upscale=1):

@@ -37,16 +37,13 @@ def point_sample(input, point_coords, **kwargs):
     return output
 
 
-def get_interest_box(heatmap, k=49):
+def get_interest_box(heatmap):
     height, width = heatmap.size()
-    values, idxs = torch.topk(heatmap.flatten(), k=k)
-
-    min_idx, max_idx = min(idxs), max(idxs)
-    min_x, min_y = min_idx % width, min_idx // width
-    max_x, max_y = max_idx % width, max_idx // width
+    x, y = heatmap_func.exception_loc(heatmap)
+    int_x, int_y = int(round(x)), int(round(y))
+    min_x, min_y = max(int_x - 3, 0), max(int_y - 3, 0)
+    max_x, max_y = min(int_x + 4, width), min(int_y + 4, height)
     bbox = torch.tensor([min_x, min_y, max_x, max_y]).long().cuda().unsqueeze(dim=0)
-
-
     return bbox
 
 
