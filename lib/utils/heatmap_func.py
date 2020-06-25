@@ -59,6 +59,8 @@ def exception_loc(heatmap):
     x, y = generate_xy(height, width)
     y = torch.from_numpy(y).type(torch.FloatTensor).view(height, width)
     x = torch.from_numpy(x).type(torch.FloatTensor).view(height, width)
+    print('y', y.device)
+    print('normalized heatmap', normalized_heatmap.device)
     return torch.sum(normalized_heatmap * x).item(), torch.sum(normalized_heatmap * y).item()
 
 
