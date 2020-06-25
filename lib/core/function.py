@@ -22,13 +22,13 @@ from utils.transforms import flip_back
 from utils.vis import *
 
 import wandb
-
+from apex import amp
 
 logger = logging.getLogger(__name__)
 
 
 def train(config, train_loader, model, optimizer, epoch,
-          output_dir, tb_log_dir, writer_dict):
+          output_dir, tb_log_dir):
     batch_time = AverageMeter()
     data_time = AverageMeter()
 
@@ -50,7 +50,6 @@ def train(config, train_loader, model, optimizer, epoch,
         # TrainGtHeatmaps = []
         # TrainPdImages = []
         # TrainPdHeatmaps = []
-        TrainGtGaussian = []
 
         # measure data loading time
         group_id = epoch * len(train_loader) + i
@@ -64,13 +63,15 @@ def train(config, train_loader, model, optimizer, epoch,
         coarse_heatmaps = output_dict['output']
         cat_boxes = output_dict['cat_boxes']
         point_coords_wrt_heatmap = output_dict['point_coords_wrt_heatmap']
-        gt_gaussians = output_dict['gt_gaussian']
 
         target = target.cuda(non_blocking=True)
 
         # compute gradient and do update step
         optimizer.zero_grad()
-        loss.backward()
+
+        with amp.scale_loss(loss, optimizer) as scaled_loss:
+            scaled_loss.backward()
+        #loss.backward()
         optimizer.step()
 
         # measure accuracy and record loss
@@ -102,7 +103,6 @@ def train(config, train_loader, model, optimizer, epoch,
                     heatmap_loss = heatmap_losses,
                     acc=acc)
             logger.info(msg)
-            global_steps = writer_dict['train_global_steps']
 
             TrainBboxSamplePoints.append(
                 wandb.Image(

@@ -197,7 +197,7 @@ def main():
         #                           final_output_dir, tb_log_dir, epoch)
         # train for one epoch
         train(config, train_loader, model, optimizer, epoch,
-              final_output_dir, tb_log_dir, writer_dict)
+              final_output_dir, tb_log_dir)
 
         # evaluate on validation set
         perf_indicator = validate(config, valid_loader, valid_dataset, model,
