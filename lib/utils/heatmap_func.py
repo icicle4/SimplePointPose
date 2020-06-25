@@ -51,8 +51,10 @@ def gauss2d(xy, amp, x0, y0, a):
 def exception_loc(heatmap):
     if not isinstance(heatmap, torch.Tensor):
         torch_heatmap = torch.from_numpy(heatmap).type(torch.FloatTensor)
+        print('gaussian param', torch_heatmap.device)
     else:
         torch_heatmap = heatmap
+        print('interest box', torch_heatmap.device)
 
     normalized_heatmap = torch.pow(torch_heatmap, 2) / torch.sum(torch.pow(torch_heatmap, 2))
     height, width = heatmap.shape
