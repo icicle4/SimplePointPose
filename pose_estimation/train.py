@@ -20,7 +20,6 @@ import torch.optim
 import torch.utils.data
 import torch.utils.data.distributed
 import torchvision.transforms as transforms
-from tensorboardX import SummaryWriter
 
 import _init_paths
 from core.config import config
@@ -33,6 +32,14 @@ from core.function import validate
 from utils.utils import get_optimizer
 from utils.utils import save_checkpoint
 from utils.utils import create_logger
+
+try:
+    from apex.parallel import DistributedDataParallel as DDP
+    from apex.fp16_utils import *
+    from apex import amp, optimizers
+    from apex.multi_tensor_apply import multi_tensor_applier
+except ImportError:
+    raise ImportError("Please install apex from https://www.github.com/nvidia/apex to half precision training")
 
 import dataset
 import models
@@ -55,6 +62,9 @@ def parse_args():
                         default=None,
                         type=str
                         )
+    parser.add_argument('--opt-level', type=str)
+    parser.add_argument('--keep-batchnorm-fp32', type=str, default=None)
+    parser.add_argument('--loss-scale', type=str, default=None)
 
     args, rest = parser.parse_known_args()
     # update config
@@ -99,39 +109,49 @@ def main():
     torch.backends.cudnn.deterministic = config.CUDNN.DETERMINISTIC
     torch.backends.cudnn.enabled = config.CUDNN.ENABLED
 
+    gpus = [int(i) for i in config.GPUS.split(',')]
+
     wandb.init(entity='icicle314', project='PointPose')
     wandb.watch_called = False
 
     model = eval('models.'+config.MODEL.NAME+'.get_pose_net')(
         config, is_train=True
     )
-
-    # copy model file
-    this_dir = os.path.dirname(__file__)
-    shutil.copy2(
-        os.path.join(this_dir, '../lib/models', config.MODEL.NAME + '.py'),
-        final_output_dir)
-
-    writer_dict = {
-        'writer': SummaryWriter(log_dir=tb_log_dir),
-        'train_global_steps': 0,
-        'valid_global_steps': 0,
-    }
-
-    gpus = [int(i) for i in config.GPUS.split(',')]
-    model = torch.nn.DataParallel(model, device_ids=gpus).cuda()
-
+    model = model.cuda()
     optimizer = get_optimizer(config, model)
+
+    model, optimizer = amp.initialize(
+        model, optimizer,
+        opt_level=args.opt_level,
+        keep_batchnorm_fp32=args.keep_batchnorm_fp32,
+        loss_scale=args.loss_scale
+    )
 
     lr_scheduler = torch.optim.lr_scheduler.MultiStepLR(
         optimizer, config.TRAIN.LR_STEP, config.TRAIN.LR_FACTOR
     )
 
     # Data loading code
+
+    if args.resume:
+        if os.path.isfile(args.resume):
+            print("=> loading checkpoint '{}'".format(args.resume))
+            checkpoint = torch.load(args.resume)
+            args.start_epoch = checkpoint['epoch']
+            best_perf = checkpoint['perf']
+            model.load_state_dict(checkpoint['state_dict'])
+            optimizer.load_state_dict(checkpoint['optimizer'])
+            print("=> loaded checkpoint '{}' (epoch {})"
+                  .format(args.resume, checkpoint['epoch']))
+            amp.load_state_dict(checkpoint['amp'])
+    else:
+        best_perf = 0.0
+        args.start_epoch = 0
+
     normalize = transforms.Normalize(mean=[0.485, 0.456, 0.406],
                                      std=[0.229, 0.224, 0.225])
 
-    train_dataset = eval('dataset.'+config.DATASET.DATASET)(
+    train_dataset = eval('dataset.' + config.DATASET.DATASET)(
         config,
         config.DATASET.ROOT,
         config.DATASET.TRAIN_SET,
@@ -142,7 +162,7 @@ def main():
         ])
     )
 
-    valid_dataset = eval('dataset.'+config.DATASET.DATASET)(
+    valid_dataset = eval('dataset.' + config.DATASET.DATASET)(
         config,
         config.DATASET.ROOT,
         config.DATASET.TEST_SET,
@@ -155,32 +175,19 @@ def main():
 
     train_loader = torch.utils.data.DataLoader(
         train_dataset,
-        batch_size=config.TRAIN.BATCH_SIZE*len(gpus),
+        batch_size=config.TRAIN.BATCH_SIZE * len(gpus),
         shuffle=config.TRAIN.SHUFFLE,
         num_workers=config.WORKERS,
         pin_memory=True
     )
     valid_loader = torch.utils.data.DataLoader(
         valid_dataset,
-        batch_size=config.TEST.BATCH_SIZE*len(gpus),
+        batch_size=config.TEST.BATCH_SIZE * len(gpus),
         shuffle=False,
         num_workers=config.WORKERS,
         pin_memory=True
     )
 
-    if args.resume:
-        if os.path.isfile(args.resume):
-            print("=> loading checkpoint '{}'".format(args.resume))
-            checkpoint = torch.load(args.resume)
-            args.start_epoch = checkpoint['epoch']
-            best_perf = checkpoint['perf']
-            model.load_state_dict(checkpoint['state_dict'])
-            optimizer.load_state_dict(checkpoint['optimizer'])
-            print("=> loaded checkpoint '{}' (epoch {})"
-                  .format(args.resume, checkpoint['epoch']))
-    else:
-        best_perf = 0.0
-        args.start_epoch = 0
 
     best_model = False
     for epoch in range(args.start_epoch, config.TRAIN.END_EPOCH):
@@ -209,6 +216,7 @@ def main():
             'state_dict': model.state_dict(),
             'perf': perf_indicator,
             'optimizer': optimizer.state_dict(),
+            'amp': amp.state_dict()
         }, best_model, final_output_dir)
 
     wandb.watch(model, log="all")
@@ -217,8 +225,8 @@ def main():
                                           'final_state.pth.tar')
     logger.info('saving final model state to {}'.format(
         final_model_state_file))
+
     torch.save(model.module.state_dict(), final_model_state_file)
-    writer_dict['writer'].close()
 
 
 if __name__ == '__main__':
