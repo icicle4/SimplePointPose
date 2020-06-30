@@ -414,10 +414,13 @@ class PoseResNet(nn.Module):
 
                 upsampled_heatmap_logits = torch.cat(upsampled_heatmap_logits, dim=0)
                 _, new_H, new_W = upsampled_heatmap_logits.size()
-                heatmaps_logits = upsampled_heatmap_logits.view(D, C, new_H, new_W)
+                heatmaps_logits = upsampled_heatmap_logits.view(D, C, new_H, new_W).half()
 
                 point_logits = self.point_head(fine_grained_backbone, fine_grained_deconv, coarse_features)
                 point_logits = point_logits.squeeze(1)
+                # print('heatmap logits', heatmaps_logits.type(), heatmaps_logits.size())
+                # print('point indices', point_indices.type(), point_indices.size())
+                # print('point logits', point_logits.type(), point_logits.size())
 
                 R, C, H, W = heatmaps_logits.shape
                 heatmaps_logits = (

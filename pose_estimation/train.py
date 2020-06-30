@@ -191,13 +191,12 @@ def main():
 
     best_model = False
     for epoch in range(args.start_epoch, config.TRAIN.END_EPOCH):
-        lr_scheduler.step()
 
-        # perf_indicator = validate(config, valid_loader, valid_dataset, model,
-        #                           final_output_dir, tb_log_dir, epoch)
         # train for one epoch
         train(config, train_loader, model, optimizer, epoch,
               final_output_dir, tb_log_dir)
+
+        lr_scheduler.step()
 
         # evaluate on validation set
         perf_indicator = validate(config, valid_loader, valid_dataset, model,
