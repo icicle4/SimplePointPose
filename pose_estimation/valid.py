@@ -21,6 +21,7 @@ import torch.utils.data
 import torch.utils.data.distributed
 import torchvision.transforms as transforms
 
+
 import _init_paths
 from core.config import config
 from core.config import update_config
@@ -28,6 +29,16 @@ from core.config import update_dir
 from core.loss import JointsMSELoss
 from core.function import validate
 from utils.utils import create_logger
+from utils.utils import get_optimizer
+
+
+try:
+    from apex.parallel import DistributedDataParallel as DDP
+    from apex.fp16_utils import *
+    from apex import amp, optimizers
+    from apex.multi_tensor_apply import multi_tensor_applier
+except ImportError:
+    raise ImportError("Please install apex from https://www.github.com/nvidia/apex to half precision training")
 
 import dataset
 import models
@@ -117,23 +128,31 @@ def main():
     model = eval('models.'+config.MODEL.NAME+'.get_pose_net')(
         config, is_train=False
     )
+    gpus = [int(i) for i in config.GPUS.split(',')]
+
+    model = model.cuda()
+    optimizer = get_optimizer(config, model)
+
+    model, optimizer = amp.initialize(
+        model, optimizer,
+        opt_level=args.opt_level,
+        keep_batchnorm_fp32=args.keep_batchnorm_fp32,
+        loss_scale=args.loss_scale
+    )
 
     if config.TEST.MODEL_FILE:
         logger.info('=> loading model from {}'.format(config.TEST.MODEL_FILE))
-        model.load_state_dict(torch.load(config.TEST.MODEL_FILE))
+        checkpoint = torch.load(config.TEST.MODEL_FILE)
+        model.load_state_dict(checkpoint['state_dict'])
+        amp.load_state_dict(checkpoint['amp'])
     else:
         model_state_file = os.path.join(final_output_dir,
                                         'final_state.pth.tar')
-        logger.info('=> loading model from {}'.format(model_state_file))
-        model.load_state_dict(torch.load(model_state_file))
+        checkpoint = torch.load(model_state_file)
+        model.load_state_dict(checkpoint['state_dict'])
+        amp.load_state_dict(checkpoint['amp'])
 
-    gpus = [int(i) for i in config.GPUS.split(',')]
-    model = torch.nn.DataParallel(model, device_ids=gpus).cuda()
-
-    # define loss function (criterion) and optimizer
-    criterion = JointsMSELoss(
-        use_target_weight=config.LOSS.USE_TARGET_WEIGHT
-    ).cuda()
+    model = torch.nn.DataParallel(model, device_ids=gpus)
 
     # Data loading code
     normalize = transforms.Normalize(mean=[0.485, 0.456, 0.406],
@@ -158,7 +177,7 @@ def main():
 
     # evaluate on validation set
     validate(config, valid_loader, valid_dataset, model,
-             final_output_dir, tb_log_dir)
+             final_output_dir, tb_log_dir, 0)
 
 
 if __name__ == '__main__':
