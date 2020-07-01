@@ -176,6 +176,59 @@ class PointHead(nn.Module):
         return self.predictor(x)
 
 
+class JointsMSELoss(nn.Module):
+    def __init__(self, use_target_weight):
+        super(JointsMSELoss, self).__init__()
+        self.criterion = nn.MSELoss(reduction='mean')
+        self.use_target_weight = use_target_weight
+
+    def forward(self, output, target, target_weight):
+        batch_size = output.size(0)
+        num_joints = output.size(1)
+        heatmaps_pred = output.reshape((batch_size, num_joints, -1)).split(1, 1)
+        heatmaps_gt = target.reshape((batch_size, num_joints, -1)).split(1, 1)
+        loss = 0
+
+        for idx in range(num_joints):
+            heatmap_pred = heatmaps_pred[idx].squeeze()
+            heatmap_gt = heatmaps_gt[idx].squeeze()
+            if self.use_target_weight:
+                loss += 0.5 * self.criterion(
+                    heatmap_pred.mul(target_weight[:, idx]),
+                    heatmap_gt.mul(target_weight[:, idx])
+                )
+            else:
+                loss += 0.5 * self.criterion(heatmap_pred, heatmap_gt)
+
+        return loss / num_joints
+
+
+class PointMSELoss(nn.Module):
+    def __init__(self, use_target_weight):
+        super(PointMSELoss, self).__init__()
+        self.criterion = nn.MSELoss(reduction='mean')
+        self.use_target_width = use_target_weight
+
+    def forward(self, output, target, target_weight):
+        batch_size = output.size(0)
+        num_joints = output.size(1)
+        heatmaps_pred = output.reshape((batch_size, num_joints, -1)).split(1, 1)
+        heatmaps_gt = target.reshape((batch_size, num_joints, -1)).split(1, 1)
+        loss = 0
+
+        for idx in range(num_joints):
+            heatmap_pred = heatmaps_pred[idx].squeeze()
+            heatmap_gt = heatmaps_gt[idx].squeeze()
+            if self.use_target_weight:
+                loss += 0.5 * self.criterion(
+                    heatmap_pred.mul(target_weight[:, idx]),
+                    heatmap_gt.mul(target_weight[:, idx])
+                )
+            else:
+                loss += 0.5 * self.criterion(heatmap_pred, heatmap_gt)
+        return loss / num_joints
+
+
 class PoseResNet(nn.Module):
 
     def __init__(self, block, layers, cfg, **kwargs):
@@ -204,6 +257,9 @@ class PoseResNet(nn.Module):
         self.subdivision_num_points = 14 * 14
 
         self.freeze_gaussian = True
+
+        self.joint_criterion = JointsMSELoss(extra.USE_TARGET_WEIGHT)
+        self.point_criterion = PointMSELoss(extra.USE_TARGET_WEIGHT)
 
         # used for deconv layers
         self.deconv_layers = self._make_deconv_layer(
@@ -277,9 +333,10 @@ class PoseResNet(nn.Module):
 
         return nn.Sequential(*layers)
 
-    def forward(self, x, gt_heatmaps):
+    def forward(self, x, gt_heatmaps, target_weight):
         x = x.cuda()
         gt_heatmaps = gt_heatmaps.cuda()
+        target_weight = target_weight.cuda()
         x = self.conv1(x)
         x = self.bn1(x)
         x = self.relu(x)
@@ -294,7 +351,7 @@ class PoseResNet(nn.Module):
         coarse_heatmaps = self.final_layer(deconv_features)
 
         if self.training:
-            heatmap_loss = (F.mse_loss(coarse_heatmaps, gt_heatmaps, reduction='mean'))
+            heatmap_loss = self.joint_criterion(coarse_heatmaps, gt_heatmaps, target_weight)
 
             B, C, H, W = coarse_heatmaps.size()
 
@@ -344,7 +401,7 @@ class PoseResNet(nn.Module):
                         gt_point_logits.append(gt_point_logit[None, None, :])
                 gt_point_logits = torch.cat(gt_point_logits)
 
-            point_loss = F.mse_loss(point_logits, gt_point_logits, reduction='mean')
+            point_loss = self.point_criterion(point_logits, gt_point_logits, target_weight)
             loss = heatmap_loss + point_loss
 
             output_heatmaps = coarse_heatmaps.clone()
@@ -418,9 +475,6 @@ class PoseResNet(nn.Module):
 
                 point_logits = self.point_head(fine_grained_backbone, fine_grained_deconv, coarse_features)
                 point_logits = point_logits.squeeze(1)
-                # print('heatmap logits', heatmaps_logits.type(), heatmaps_logits.size())
-                # print('point indices', point_indices.type(), point_indices.size())
-                # print('point logits', point_logits.type(), point_logits.size())
 
                 R, C, H, W = heatmaps_logits.shape
                 heatmaps_logits = (

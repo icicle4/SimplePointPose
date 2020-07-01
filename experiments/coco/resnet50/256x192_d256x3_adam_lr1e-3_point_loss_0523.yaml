@@ -22,6 +22,7 @@ MODEL:
   NUM_JOINTS: 17
   EXTRA:
     TARGET_TYPE: 'gaussian'
+    USE_TARGET_WEIGHT: true
     HEATMAP_SIZE:
     - 48
     - 64
