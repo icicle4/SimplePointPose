@@ -42,6 +42,7 @@ except ImportError:
 
 import dataset
 import models
+import wandb
 
 
 def parse_args():
@@ -86,6 +87,10 @@ def parse_args():
                         help='coco detection bbox file',
                         type=str)
 
+    parser.add_argument('--opt-level', type=str)
+    parser.add_argument('--keep-batchnorm-fp32', type=str, default=None)
+    parser.add_argument('--loss-scale', type=str, default=None)
+
     args = parser.parse_args()
 
     return args
@@ -119,6 +124,9 @@ def main():
 
     logger.info(pprint.pformat(args))
     logger.info(pprint.pformat(config))
+
+    wandb.init(entity='icicle314', project='PointPoseValid')
+    wandb.watch_called = False
 
     # cudnn related setting
     cudnn.benchmark = config.CUDNN.BENCHMARK

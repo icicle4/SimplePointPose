@@ -213,7 +213,9 @@ def validate(config, val_loader, val_dataset, model, output_dir,
                 input_flipped = np.flip(input.cpu().numpy(), 3).copy()
                 input_flipped = torch.from_numpy(input_flipped).cuda()
 
-                refine_output_flipped, coarse_output_flipped = model(input_flipped, target)
+                output = model(input_flipped, target)
+
+                refine_output_flipped, coarse_output_flipped = output['refine'], output['coarse']
 
                 refine_output_flipped = flip_back(refine_output_flipped.cpu().numpy(),
                                            val_dataset.flip_pairs)
