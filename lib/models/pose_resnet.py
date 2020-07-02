@@ -189,6 +189,7 @@ class JointsMSELoss(nn.Module):
         heatmaps_gt = target.reshape((batch_size, num_joints, -1)).split(1, 1)
         loss = 0
 
+
         for idx in range(num_joints):
             heatmap_pred = heatmaps_pred[idx].squeeze()
             heatmap_gt = heatmaps_gt[idx].squeeze()
@@ -216,6 +217,8 @@ class PointMSELoss(nn.Module):
     def forward(self, output, target, target_weight):
         batch_size = output.size(0)
         num_joints = output.size(1)
+        print('out', output.size())
+        print('target', target.size())
         heatmaps_pred = output.reshape((batch_size, num_joints, -1)).split(1, 1)
         heatmaps_gt = target.reshape((batch_size, num_joints, -1)).split(1, 1)
         loss = 0
