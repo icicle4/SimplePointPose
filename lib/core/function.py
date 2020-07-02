@@ -148,7 +148,7 @@ def validate(config, val_loader, val_dataset, model, output_dir,
 
             # compute output
             group_id = epoch * len(val_loader) + i
-            output_dict = model(input, target)
+            output_dict = model(input, target, target_weight)
             refine_output, coarse_output = output_dict['refine'], output_dict['coarse']
 
             if config.TEST.FLIP_TEST:
