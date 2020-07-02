@@ -192,6 +192,10 @@ class JointsMSELoss(nn.Module):
         for idx in range(num_joints):
             heatmap_pred = heatmaps_pred[idx].squeeze()
             heatmap_gt = heatmaps_gt[idx].squeeze()
+            print('joint')
+            print('pred', heatmap_pred.size())
+            print('gt', heatmap_gt.size())
+            print('target weiht', target_weight.size())
             if self.use_target_weight:
                 loss += 0.5 * self.criterion(
                     heatmap_pred.mul(target_weight[:, idx]),
@@ -219,6 +223,10 @@ class PointMSELoss(nn.Module):
         for idx in range(num_joints):
             heatmap_pred = heatmaps_pred[idx].squeeze()
             heatmap_gt = heatmaps_gt[idx].squeeze()
+            print('point')
+            print('pred', heatmap_pred.size())
+            print('gt', heatmap_gt.size())
+            print('target weiht', target_weight.size())
             if self.use_target_weight:
                 loss += 0.5 * self.criterion(
                     heatmap_pred.mul(target_weight[:, idx]),
