@@ -207,7 +207,7 @@ class PointMSELoss(nn.Module):
     def __init__(self, use_target_weight):
         super(PointMSELoss, self).__init__()
         self.criterion = nn.MSELoss(reduction='mean')
-        self.use_target_width = use_target_weight
+        self.use_target_weight = use_target_weight
 
     def forward(self, output, target, target_weight):
         batch_size = output.size(0)
