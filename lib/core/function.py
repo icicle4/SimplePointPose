@@ -227,57 +227,57 @@ def validate(config, val_loader, val_dataset, model, output_dir,
                           coarse_acc=coarse_acc, refine_acc=refine_acc)
                 logger.info(msg)
 
-                stage_gaussian_params = output_dict['stage_gaussian_params']
+                #stage_gaussian_params = output_dict['stage_gaussian_params']
                 stage_interpolate_heatmaps = output_dict['stage_interpolate_heatmaps']
                 stage_refined_heatmaps = output_dict['stage_refined_heatmaps']
 
-                stage_ims = vis_stage_heatmaps(stage_interpolate_heatmaps, stage_gaussian_params)
-                stage_refined_ims = vis_stage_heatmaps(stage_refined_heatmaps, stage_gaussian_params)
+                # stage_ims = vis_stage_heatmaps(stage_interpolate_heatmaps, stage_gaussian_params)
+                # stage_refined_ims = vis_stage_heatmaps(stage_refined_heatmaps, stage_gaussian_params)
+                #
+                # StageImages1.append(
+                #     wandb.Image(
+                #         stage_ims[0], caption='Stage Image 1 {}'.format(i), grouping=group_id
+                #     )
+                # )
+                # StageImages2.append(
+                #     wandb.Image(
+                #         stage_ims[1], caption='Stage Image 2 {}'.format(i), grouping=group_id
+                #     )
+                # )
+                # StageImages3.append(
+                #     wandb.Image(
+                #         stage_ims[2], caption='Stage Image 3 {}'.format(i), grouping=group_id
+                #     )
+                # )
 
-                StageImages1.append(
-                    wandb.Image(
-                        stage_ims[0], caption='Stage Image 1 {}'.format(i), grouping=group_id
-                    )
-                )
-                StageImages2.append(
-                    wandb.Image(
-                        stage_ims[1], caption='Stage Image 2 {}'.format(i), grouping=group_id
-                    )
-                )
-                StageImages3.append(
-                    wandb.Image(
-                        stage_ims[2], caption='Stage Image 3 {}'.format(i), grouping=group_id
-                    )
-                )
-
-                StageRefineHeatmaps1.append(
-                    wandb.Image(
-                        stage_refined_ims[0], caption='Stage Refine Heatmaps 1 {}'.format(i), grouping=group_id
-                    )
-                )
-
-                StageRefineHeatmaps2.append(
-                    wandb.Image(
-                        stage_refined_ims[1], caption='Stage Refine Heatmaps 2 {}'.format(i), grouping=group_id
-                    )
-                )
-
-                StageRefineHeatmaps3.append(
-                    wandb.Image(
-                        stage_refined_ims[2], caption='Stage Refine Heatmaps 3 {}'.format(i), grouping=group_id
-                    )
-                )
-
-                wandb.log(
-                    {
-                        'Val Stage Heatmap 1': StageImages1,
-                        'Val Stage Heatmap 2': StageImages2,
-                        'Val Stage Heatmap 3': StageImages3,
-                        'Val Stage Refine Heatmap 1': StageRefineHeatmaps1,
-                        'Val Stage Refine Heatmap 2': StageRefineHeatmaps2,
-                        'Val Stage Refine Heatmap 3': StageRefineHeatmaps3
-                    }
-                )
+                # StageRefineHeatmaps1.append(
+                #     wandb.Image(
+                #         stage_refined_ims[0], caption='Stage Refine Heatmaps 1 {}'.format(i), grouping=group_id
+                #     )
+                # )
+                #
+                # StageRefineHeatmaps2.append(
+                #     wandb.Image(
+                #         stage_refined_ims[1], caption='Stage Refine Heatmaps 2 {}'.format(i), grouping=group_id
+                #     )
+                # )
+                #
+                # StageRefineHeatmaps3.append(
+                #     wandb.Image(
+                #         stage_refined_ims[2], caption='Stage Refine Heatmaps 3 {}'.format(i), grouping=group_id
+                #     )
+                # )
+                #
+                # wandb.log(
+                #     {
+                #         'Val Stage Heatmap 1': StageImages1,
+                #         'Val Stage Heatmap 2': StageImages2,
+                #         'Val Stage Heatmap 3': StageImages3,
+                #         'Val Stage Refine Heatmap 1': StageRefineHeatmaps1,
+                #         'Val Stage Refine Heatmap 2': StageRefineHeatmaps2,
+                #         'Val Stage Refine Heatmap 3': StageRefineHeatmaps3
+                #     }
+                # )
 
         name_values, perf_indicator = val_dataset.evaluate(
             config, all_preds, output_dir, all_boxes, image_path,
