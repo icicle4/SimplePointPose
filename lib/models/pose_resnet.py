@@ -369,22 +369,13 @@ class PoseResNet(nn.Module):
             point_coords_wrt_heatmap = get_point_coords_wrt_roi(cat_boxes, point_coords)
             point_coords_wrt_heatmap = point_coords_wrt_heatmap.view(B, C, num_sampled, 2).permute(1, 0, 2, 3)
 
-            fine_grained_backbone = point_sample_fine_grained_features(
-                backbone, point_coords_wrt_heatmap
-            )
-
-            fine_grained_deconv = point_sample_fine_grained_features(
-                deconv_features, point_coords_wrt_heatmap
-            )
-
-            coarse_features = point_sample_pd_heatmaps(
-                coarse_heatmaps, point_coords_wrt_heatmap
-            )
+            fine_grained_backbone = point_sample_fine_grained_features(backbone, point_coords_wrt_heatmap)
+            fine_grained_deconv = point_sample_fine_grained_features(deconv_features, point_coords_wrt_heatmap)
+            coarse_features = point_sample_pd_heatmaps(coarse_heatmaps, point_coords_wrt_heatmap)
             point_logits = self.point_head(fine_grained_backbone, fine_grained_deconv, coarse_features)
 
             with torch.no_grad():
                 gt_point_logits = []
-                gt_gaussians = []
                 D, C, H, W = gt_heatmaps.shape
                 for i in range(D):
                     for j in range(C):
@@ -392,9 +383,6 @@ class PoseResNet(nn.Module):
                         heatmap = gt_heatmaps[i, j]
                         gt_gaussian_params = gaussian_param(heatmap)
 
-                        xy = generate_xy(H, W)
-                        gt_gaussian = torch.from_numpy(gauss2d(xy, *gt_gaussian_params)).type(dtype).view(H, W)
-                        gt_gaussians.append(gt_gaussian)
                         xy = point_coord_wrt_heatmap.clone().permute(1, 0).detach().cpu().numpy()
                         gt_point_logit = torch.from_numpy(gauss2d(xy, *gt_gaussian_params)).type(dtype)
 
@@ -408,7 +396,6 @@ class PoseResNet(nn.Module):
 
             return {
                 "gt_heatmap": gt_heatmaps,
-                "gt_gaussian": gt_gaussians,
                 "output": output_heatmaps,
                 "loss": loss,
                 "heatmap_loss": heatmap_loss,
@@ -422,7 +409,7 @@ class PoseResNet(nn.Module):
             heatmaps_logits = coarse_heatmaps.clone()
             D, C, H, W = heatmaps_logits.size()
 
-            stage_gaussian_params = []
+            #stage_gaussian_params = []
             stage_interpolate_heatmaps = []
             stage_refined_heatmaps = []
 
@@ -436,13 +423,14 @@ class PoseResNet(nn.Module):
                         heatmap_logit = heatmaps_logits[i, j]
                         # 每一阶段，初始heatmap将分别计算高斯分布参数生成更高分辨率的特征图及通过线性插值生成更高分辨率的特征图
                         # 我们将两种特征图中差异最大的值作为我们需要优化的目标
-                        gaussian_heatmap= gaussian_interpolate(heatmap_logit, 2)
+                        #gaussian_heatmap= gaussian_interpolate(heatmap_logit, 2)
                         interpolated_heatmap = F.interpolate(
                             heatmap_logit[None, None, :, :], scale_factor=2, mode="bilinear", align_corners=False
                         ).squeeze(0)
 
-                        error_map = torch.abs(gaussian_heatmap - interpolated_heatmap)
-                        uncertain_map = calculate_certainty(error_map.unsqueeze(dim=0), [])
+                        #error_map = torch.abs(gaussian_heatmap - interpolated_heatmap)
+                        #uncertain_map = calculate_certainty(error_map.unsqueeze(dim=0), [])
+                        uncertain_map = calculate_certainty(interpolated_heatmap[None, :], [])
 
                         point_indice, point_coord = get_certain_point_coords_on_grid(
                             uncertain_map, num_points=self.subdivision_num_points
@@ -454,9 +442,9 @@ class PoseResNet(nn.Module):
                         upsampled_heatmap_logits.append(interpolated_heatmap)
 
                         if i == 0 and j == 0:
-                            stage_gaussian_params.append(
-                                gaussian_heatmap
-                            )
+                            # stage_gaussian_params.append(
+                            #     gaussian_heatmap
+                            # )
 
                             stage_interpolate_heatmaps.append(
                                 interpolated_heatmap.clone().squeeze(0)
@@ -487,7 +475,7 @@ class PoseResNet(nn.Module):
             return {
                 'refine': heatmaps_logits,
                 'coarse': coarse_heatmaps,
-                'stage_gaussian_params': stage_gaussian_params,
+                #'stage_gaussian_params': stage_gaussian_params,
                 'stage_interpolate_heatmaps': stage_interpolate_heatmaps,
                 'stage_refined_heatmaps': stage_refined_heatmaps
             }

@@ -15,31 +15,6 @@ def generate_xy(height, width):
     Xs = xi.flatten()
     xy = np.concatenate([Xs[None, :], Ys[None, :]], axis=0)
     return xy
-#
-#
-# def gaussian_param(heatmap):
-#     if isinstance(heatmap, torch.Tensor):
-#         heatmap = heatmap.clone().detach().cpu().numpy()
-#
-#     heatmap = np.clip(heatmap, 1e-5, 1.)
-#     init_delta = 8
-#     init_H, init_W = 64, 48
-#
-#     height, width = heatmap.shape[-2:]
-#     delta = 1 / (init_delta * (4 ** math.log((height / init_H), 2)))
-#
-#     idxes = np.where(heatmap > 1e-3)
-#     y, x = idxes
-#     heigh_value_heatmap = heatmap[y, x]
-#
-#     if not heigh_value_heatmap.any():
-#         return [0, 0.5, 0.5, 0]
-#     else:
-#         zobs = heigh_value_heatmap.flatten()
-#         i = zobs.argmax()
-#         x0, y0 = x[i], y[i]
-#         amp = zobs.max()
-#         return [amp, x0, y0, delta]
 
 
 def gauss2d(xy, amp, x0, y0, a):
@@ -53,8 +28,6 @@ def exception_loc(heatmap):
         torch_heatmap = torch.from_numpy(heatmap).type(torch.FloatTensor).cuda()
     else:
         torch_heatmap = heatmap
-
-
     normalized_heatmap = torch.pow(torch_heatmap, 2) / torch.sum(torch.pow(torch_heatmap, 2))
     height, width = heatmap.shape
     x, y = generate_xy(height, width)

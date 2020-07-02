@@ -59,8 +59,6 @@ def get_certain_point_coors_with_randomness(
     proposal_boxes = [get_interest_box(heatmap[0]) for heatmap in flatten_coarse_heatmaps]
 
     point_coords = torch.rand(target_num, num_sampled, 2, device=coarse_heatmaps.device)
-    #print('point coords', point_coords)
-
     cat_boxes = torch.cat(proposal_boxes)
 
     p_coords = point_coords.clone()
@@ -83,10 +81,7 @@ def get_certain_point_coors_with_randomness(
         )
 
     point_logits = torch.cat(point_logits, dim=0).unsqueeze(dim=1)
-    #print('point_logits', point_logits.size(), point_logits.type())
     point_uncertainties = certainty_func(point_logits)
-
-    #print('point_uncertainties', point_uncertainties.size(), point_uncertainties.type())
 
     num_uncertain_points = int(importance_sample_ratio * num_points)
     num_random_points = num_points - num_uncertain_points
@@ -97,7 +92,6 @@ def get_certain_point_coors_with_randomness(
     point_coords = point_coords.view(-1, 2)[idx.view(-1), :].view(
         target_num, num_uncertain_points, 2
     )
-    #print('point_coords', point_coords.size(), point_coords.type(), point_coords.device)
 
     if num_random_points > 0:
         point_coords = torch.cat(
@@ -196,7 +190,6 @@ def point_sample_features(feature, point_coords):
         )
     point_logits = torch.cat(point_logits, dim=0)
     return point_logits
-
 
 
 def point_sample_fine_grained_features(feature, point_coords_wrt_heatmap, scale=1):
