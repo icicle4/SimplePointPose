@@ -3,7 +3,7 @@ DATA_DIR: ''
 OUTPUT_DIR: 'output'
 LOG_DIR: 'log'
 WORKERS: 4
-PRINT_FREQ: 400
+PRINT_FREQ: 100
 
 DATASET:
   DATASET: 'coco'

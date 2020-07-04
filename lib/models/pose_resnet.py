@@ -396,22 +396,15 @@ class PoseResNet(nn.Module):
             output_heatmaps = coarse_heatmaps.clone()
 
             return {
-                "gt_heatmap": gt_heatmaps,
                 "output": output_heatmaps,
                 "loss": loss,
                 "heatmap_loss": heatmap_loss,
                 "point_loss": point_loss,
-                'point_coords': point_coords.clone(),
-                'cat_boxes': cat_boxes.clone(),
-                'point_coords_wrt_heatmap': point_coords_wrt_heatmap.clone()
             }
 
         else:
             heatmaps_logits = coarse_heatmaps.clone()
             D, C, H, W = heatmaps_logits.size()
-
-            stage_interpolate_heatmaps = []
-            stage_refined_heatmaps = []
 
             for subdivision_step in range(self.subdivision_steps):
                 upsampled_heatmap_logits = []
@@ -457,12 +450,9 @@ class PoseResNet(nn.Module):
                         .view(R, C, H, W)
                 )
 
-                stage_refined_heatmaps.append(heatmaps_logits[0, 0])
             return {
                 'refine': heatmaps_logits,
                 'coarse': coarse_heatmaps,
-                'stage_interpolate_heatmaps': stage_interpolate_heatmaps,
-                'stage_refined_heatmaps': stage_refined_heatmaps
             }
 
     def init_weights(self, pretrained=''):

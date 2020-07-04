@@ -90,13 +90,21 @@ def train(config, train_loader, model, optimizer, epoch,
                     acc=acc)
             logger.info(msg)
 
+            wandb.log(
+                {
+                    'Step Train Loss': losses.val,
+                    'Step Train Point Loss': point_losses.val,
+                    'Step Train Heatmap Loss': heatmap_losses.val,
+                    'Step Train Accuracy': acc.val,
+                }
+            )
 
     wandb.log(
         {
-            'Train Loss': losses.avg,
-            'Train Point Loss': point_losses.avg,
-            'Train Heatmap Loss': heatmap_losses.avg,
-            'Train Accuracy': acc.avg,
+            'Epoch Train Loss': losses.avg,
+            'Epoch Train Point Loss': point_losses.avg,
+            'Epoch Train Heatmap Loss': heatmap_losses.avg,
+            'Epoch Train Accuracy': acc.avg,
         }
     )
 
