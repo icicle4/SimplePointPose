@@ -42,17 +42,13 @@ def train(config, train_loader, model, optimizer, epoch,
 
     for i, (input, target, target_weight, meta) in enumerate(train_loader):
         # measure data loading time
-        group_id = epoch * len(train_loader) + i
+
         data_time.update(time.time() - end)
         # compute output
         output_dict = model(input, target, target_weight)
         loss = output_dict['loss']
         heatmap_loss = output_dict['heatmap_loss']
         point_loss = output_dict['point_loss']
-
-        coarse_heatmaps = output_dict['output']
-        cat_boxes = output_dict['cat_boxes']
-        point_coords_wrt_heatmap = output_dict['point_coords_wrt_heatmap']
 
         target = target.cuda(non_blocking=True)
 
@@ -94,17 +90,6 @@ def train(config, train_loader, model, optimizer, epoch,
                     acc=acc)
             logger.info(msg)
 
-            TrainBboxSamplePoints = [
-                wandb.Image(
-                    vis_single_bbox_and_sample_point(coarse_heatmaps, cat_boxes, point_coords_wrt_heatmap),
-                    caption='Train Epoch {} bbox and sample point'.format(epoch),
-                    grouping=group_id)]
-
-            wandb.log(
-                {
-                    'Train BBox SamplePoints': TrainBboxSamplePoints
-                }
-            )
 
     wandb.log(
         {
@@ -138,16 +123,7 @@ def validate(config, val_loader, val_dataset, model, output_dir,
         end = time.time()
         for i, (input, target, target_weight, meta) in enumerate(val_loader):
 
-            StageImages1 = []
-            StageImages2 = []
-            StageImages3 = []
-
-            StageRefineHeatmaps1 = []
-            StageRefineHeatmaps2 = []
-            StageRefineHeatmaps3 = []
-
             # compute output
-            group_id = epoch * len(val_loader) + i
             output_dict = model(input, target, target_weight)
             refine_output, coarse_output = output_dict['refine'], output_dict['coarse']
 
@@ -227,58 +203,6 @@ def validate(config, val_loader, val_dataset, model, output_dir,
                           coarse_acc=coarse_acc, refine_acc=refine_acc)
                 logger.info(msg)
 
-                #stage_gaussian_params = output_dict['stage_gaussian_params']
-                stage_interpolate_heatmaps = output_dict['stage_interpolate_heatmaps']
-                stage_refined_heatmaps = output_dict['stage_refined_heatmaps']
-
-                # stage_ims = vis_stage_heatmaps(stage_interpolate_heatmaps, stage_gaussian_params)
-                # stage_refined_ims = vis_stage_heatmaps(stage_refined_heatmaps, stage_gaussian_params)
-                #
-                # StageImages1.append(
-                #     wandb.Image(
-                #         stage_ims[0], caption='Stage Image 1 {}'.format(i), grouping=group_id
-                #     )
-                # )
-                # StageImages2.append(
-                #     wandb.Image(
-                #         stage_ims[1], caption='Stage Image 2 {}'.format(i), grouping=group_id
-                #     )
-                # )
-                # StageImages3.append(
-                #     wandb.Image(
-                #         stage_ims[2], caption='Stage Image 3 {}'.format(i), grouping=group_id
-                #     )
-                # )
-
-                # StageRefineHeatmaps1.append(
-                #     wandb.Image(
-                #         stage_refined_ims[0], caption='Stage Refine Heatmaps 1 {}'.format(i), grouping=group_id
-                #     )
-                # )
-                #
-                # StageRefineHeatmaps2.append(
-                #     wandb.Image(
-                #         stage_refined_ims[1], caption='Stage Refine Heatmaps 2 {}'.format(i), grouping=group_id
-                #     )
-                # )
-                #
-                # StageRefineHeatmaps3.append(
-                #     wandb.Image(
-                #         stage_refined_ims[2], caption='Stage Refine Heatmaps 3 {}'.format(i), grouping=group_id
-                #     )
-                # )
-                #
-                # wandb.log(
-                #     {
-                #         'Val Stage Heatmap 1': StageImages1,
-                #         'Val Stage Heatmap 2': StageImages2,
-                #         'Val Stage Heatmap 3': StageImages3,
-                #         'Val Stage Refine Heatmap 1': StageRefineHeatmaps1,
-                #         'Val Stage Refine Heatmap 2': StageRefineHeatmaps2,
-                #         'Val Stage Refine Heatmap 3': StageRefineHeatmaps3
-                #     }
-                # )
-
         name_values, perf_indicator = val_dataset.evaluate(
             config, all_preds, output_dir, all_boxes, image_path,
             filenames, imgnums)
@@ -294,7 +218,7 @@ def validate(config, val_loader, val_dataset, model, output_dir,
         {
             'Val coarse acc': coarse_acc.avg,
             'Val refine acc': refine_acc.avg,
-            'perf_indicagtor': perf_indicator
+            'perf_indicator': perf_indicator
         }
     )
     return perf_indicator

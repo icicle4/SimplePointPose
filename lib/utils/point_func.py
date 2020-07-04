@@ -69,12 +69,11 @@ def get_certain_point_coors_with_randomness(
     for i in range(target_num):
         coarse_heatmap = flatten_coarse_heatmaps[i]
         h, w = coarse_heatmap.shape[-2:]
-        uncertain_map = heatmap_func.calculate_uncertain_gaussian_heatmap_func(coarse_heatmap, upscale=1).unsqueeze(0)
         point_coords_scaled = point_coords_wrt_heatmap[i] / torch.tensor([w, h], device=coarse_heatmap.device)
 
         point_logits.append(
             point_sample(
-                uncertain_map.unsqueeze(0),
+                coarse_heatmap.unsqueeze(0),
                 point_coords_scaled.unsqueeze(0),
                 align_corners=False
             ).squeeze(0)
